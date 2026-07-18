@@ -14,40 +14,52 @@ def vlookup(params_json: str) -> str:
         params = json.loads(params_json)
         left_file = params["left_file"]
         right_file = params["right_file"]
-        lookup_column = params["lookup_column"]
-        output_columns = params["output_columns"]
+        left_column = params["left_column"]
+        right_column = params["right_column"]
+        left_output_columns = params["left_output_columns"]
+        right_output_columns = params["right_output_columns"]
         target_path = params["target_path"]
 
         left_df = pd.read_csv(left_file)
         right_df = pd.read_csv(right_file)
 
-        for col_name in [lookup_column] + output_columns:
-            if col_name not in left_df.columns and col_name not in right_df.columns:
-                return json.dumps({
-                    "success": False,
-                    "row_count": 0,
-                    "message": f"Column '{col_name}' not found in either file.",
-                })
-
-        if lookup_column not in left_df.columns:
+        if left_column not in left_df.columns:
             return json.dumps({
                 "success": False,
                 "row_count": 0,
-                "message": f"Lookup column '{lookup_column}' not found in left file.",
+                "message": f"Column '{left_column}' not found in left file.",
             })
 
-        if lookup_column not in right_df.columns:
+        if right_column not in right_df.columns:
             return json.dumps({
                 "success": False,
                 "row_count": 0,
-                "message": f"Lookup column '{lookup_column}' not found in right file.",
+                "message": f"Column '{right_column}' not found in right file.",
             })
 
-        right_subset = right_df[[lookup_column] + [c for c in output_columns if c in right_df.columns]]
-        merged = left_df.merge(right_subset, on=lookup_column, how="left")
+        if left_df[left_column].dtype != right_df[right_column].dtype:
+            return json.dumps({
+                "success": False,
+                "row_count": 0,
+                "message": (
+                    f"Data type mismatch: left column '{left_column}' is "
+                    f"{left_df[left_column].dtype}, right column '{right_column}' is "
+                    f"{right_df[right_column].dtype}. Cannot merge."
+                ),
+            })
 
-        keep_cols = list(left_df.columns) + [c for c in output_columns if c not in left_df.columns]
-        merged = merged[[c for c in keep_cols if c in merged.columns]]
+        right_merge_cols = [right_column] + [c for c in right_output_columns if c in right_df.columns]
+        right_subset = right_df[list(dict.fromkeys(right_merge_cols))]
+        merged = left_df.merge(
+            right_subset, left_on=left_column, right_on=right_column, how="left"
+        )
+
+        if right_column != left_column:
+            merged = merged.drop(columns=[right_column], errors="ignore")
+
+        final_cols = [c for c in left_output_columns if c in merged.columns]
+        final_cols += [c for c in right_output_columns if c in merged.columns and c not in final_cols]
+        merged = merged[final_cols]
 
         merged.to_csv(target_path, index=False)
 
