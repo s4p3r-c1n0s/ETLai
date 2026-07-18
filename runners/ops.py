@@ -2,13 +2,14 @@
 
 import json
 
-from dagster import In, Nothing, OpExecutionContext, op
+from dagster import In, Nothing, OpExecutionContext, Out, op
 
+from helpers.column_picker import pick_columns
 from helpers.file_picker import pick_files
 from logic.vlookup_atom import vlookup
 
 
-@op(out={"file_paths": None})
+@op(out={"file_paths": Out()})
 def pick_source_files_op(context: OpExecutionContext) -> list[str]:
     """Opens Tkinter file picker and returns selected file paths."""
     context.log.info("Opening file picker dialog...")
@@ -18,14 +19,29 @@ def pick_source_files_op(context: OpExecutionContext) -> list[str]:
     return paths
 
 
-@op(ins={"file_paths": In(list)})
-def vlookup_op(context: OpExecutionContext, file_paths: list[str]) -> None:
+@op(ins={"file_paths": In(list)}, out={"column_mapping": Out()})
+def pick_columns_op(context: OpExecutionContext, file_paths: list[str]) -> dict:
+    """Opens Tkinter column picker to let user select join columns with dtype validation."""
+    context.log.info("Opening column picker dialog...")
+    column_mapping = pick_columns(file_paths[0], file_paths[1])
+    context.log.info(
+        f"Selected columns: left='{column_mapping['left_column']}', "
+        f"right='{column_mapping['right_column']}'"
+    )
+    context.add_output_metadata(column_mapping)
+    return column_mapping
+
+
+@op(ins={"file_paths": In(list), "column_mapping": In(dict)})
+def vlookup_op(context: OpExecutionContext, file_paths: list[str], column_mapping: dict) -> None:
     """Wraps the vlookup atom with Dagster metadata and logging."""
     params = {
         "left_file": file_paths[0],
         "right_file": file_paths[1],
-        "lookup_column": context.op_config.get("lookup_column", "id"),
-        "output_columns": context.op_config.get("output_columns", []),
+        "left_column": column_mapping["left_column"],
+        "right_column": column_mapping["right_column"],
+        "left_output_columns": column_mapping["left_output_columns"],
+        "right_output_columns": column_mapping["right_output_columns"],
         "target_path": context.op_config.get("target_path", "data/output.csv"),
     }
 
