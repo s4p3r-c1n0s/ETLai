@@ -1,128 +1,153 @@
 # Air-Gapped Desktop Automation Engine
 
-A modular, factory-based Dagster system for local data operations. No data leaves your machine.
+A local Dagster application for folder-driven CSV transformations. Source files,
+saved column choices, generated outputs, and Dagster run storage remain on the
+machine.
 
-## Core Concepts
+## How it works
 
-| Term | Meaning |
-|------|---------|
-| **Atom** | A generic, reusable pure function (JSON-in, JSON-out). No domain knowledge. E.g. "vlookup", "groupby". |
-| **Business Pipeline** | An atom applied to specific domain data with its own folder lifecycle, config, and sensor. E.g. "vlookup on roll number", "groupby religion". |
-| **Config Init** | First-run UI step that captures user selections (columns, params) and saves them. Subsequent runs are fully automated. |
+Each business pipeline has an inbox and a Dagster sensor. The sensor waits for
+the required number of stable files, moves them to staging, and launches a job.
+The job prepares atom parameters, executes the transformation, then moves source
+files to `processed/` or `rejected/`.
 
-## Architecture
+An **atom** is a reusable transformation module with an
+`execute(params_json) -> result_json` interface. Atoms are domain-agnostic —
+they have no opinion on which column or business context. They do read and write
+files, so they are not side-effect-free.
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│  definitions.py              Dagster entry point              │
-│  pipeline.py                 Business pipeline definitions    │
-├──────────────────────────────────────────────────────────────┤
-│  logic/atoms/                Core atoms (generic, reusable)   │
-│  ├── vlookup.py             Left-join atom                   │
-│  └── groupby.py             Group-by-count atom              │
-├──────────────────────────────────────────────────────────────┤
-│  runners/                    Pipeline assembly infrastructure │
-│  ├── pipeline_factory.py    Job builder                      │
-│  ├── atom_runner.py         File lifecycle + notifications   │
-│  └── ops.py                 Business-specific pre-process ops│
-├──────────────────────────────────────────────────────────────┤
-│  sensors/                    Hot folder sensors               │
-│  └── hot_folder_sensor.py   Stability check + sweeper        │
-├──────────────────────────────────────────────────────────────┤
-│  helpers/                    Cross-cutting utilities          │
-│  ├── folders.py             Per-pipeline folder lifecycle    │
-│  ├── config_store.py        Per-pipeline config persistence  │
-│  ├── column_picker.py       Tkinter column selection UI      │
-│  ├── notifier.py            Cross-platform OS notifications  │
-│  └── mock_generator.py      Synthetic test data              │
-├──────────────────────────────────────────────────────────────┤
-│  pipelines/                  Business pipeline folders        │
-│  ├── vlookup_rollnumber/    VLOOKUP by roll number           │
-│  │   ├── inbox/  staging/  processed/  rejected/  output/   │
-│  │   └── config.json                                         │
-│  └── groupby_religion/      GroupBy religion                 │
-│      ├── inbox/  staging/  processed/  rejected/  output/   │
-│      └── config.json                                         │
-└──────────────────────────────────────────────────────────────┘
-```
+A **business pipeline** applies an atom to specific domain data with its own
+folder lifecycle, sensor, and saved configuration.
+
+## Registered jobs
+
+| Job | Files needed | Description |
+|-----|-------------|-------------|
+| `vlookup_rollnumber` | 2 CSV | Left-join on user-chosen columns (first run: Tkinter picker, then saved) |
+| `groupby_religion` | 1 CSV | Group by user-chosen column with counts, sorted descending |
+| `mock_generator` | 1+ CSV | Generate synthetic data from file headers using Faker |
+| `vlookup_then_groupby` | 2 CSV | Composite: VLOOKUP → GroupBy in a single job |
+
+Each job has a same-named sensor. Sensors must be enabled in Dagster UI before
+they process inbox files.
 
 ## Installation
 
-```bash
-python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-## Usage
-
-### Start Dagster
+Python 3.10+ required.
 
 ```bash
-DAGSTER_HOME=$(pwd) dagster dev -m definitions
+python3 -m venv .venv
+source .venv/bin/activate       # Windows: .venv\Scripts\activate
+python -m pip install -r requirements.txt
 ```
 
-Open **http://localhost:3000**. Enable sensors for the pipelines you want.
+Tkinter must be available in the Python installation for first-run config.
 
-### Business Pipelines
-
-#### VLOOKUP by Roll Number
-
-Drop 2 CSV/Excel files into `pipelines/vlookup_rollnumber/inbox/`.
-
-- **First run:** Tkinter column picker appears. Select join columns (roll number) and output columns. Config is saved.
-- **Subsequent runs:** Fully automated — no UI, uses saved config.
-- **Reconfigure:** Delete `pipelines/vlookup_rollnumber/config.json` or set `reconfigure: true` in RunConfig.
-
-#### GroupBy Religion
-
-Drop 1 CSV/Excel file into `pipelines/groupby_religion/inbox/`.
-
-- **First run:** Tkinter picker for the group-by column. Config is saved.
-- **Subsequent runs:** Fully automated.
-- **Output:** CSV with each unique value and its count, sorted descending.
-
-### Manual Trigger via Launchpad
-
-```yaml
-ops:
-  vlookup_rollnumber__load_files:
-    config:
-      file_paths:
-        - /path/to/left.csv
-        - /path/to/right.csv
-  vlookup_rollnumber__pre_process:
-    config:
-      reconfigure: true    # force UI again
-```
-
-### CLI
+## Run
 
 ```bash
-DAGSTER_HOME=$(pwd) dagster job execute -m definitions -j vlookup_rollnumber
+DAGSTER_HOME="$(pwd)" dagster dev -m definitions
 ```
 
-## File Lifecycle
+Open `http://localhost:3000`, enable the desired sensor, and place files in
+`pipelines/<job-name>/inbox/`.
 
+Manual execution without UI:
+
+```bash
+DAGSTER_HOME="$(pwd)" dagster job execute -m definitions -j vlookup_rollnumber
 ```
-inbox/ → [sensor detects stable files] → staging/ → [pipeline runs]
-    → processed/ (on success, + output written to output/)
-    → rejected/  (on failure, with .error.txt reason)
+
+## Source modules
+
+### Entry points
+
+| File | Role |
+|------|------|
+| `definitions.py` | Registers all jobs and sensors with Dagster |
+| `pipeline.py` | Builds single-atom business jobs via the factory |
+| `runners/composite.py` | Defines the `vlookup_then_groupby` composite job |
+
+### `logic/atoms/`
+
+| Module | Purpose |
+|--------|---------|
+| `vlookup.py` | Left join two CSVs on specified columns with dtype validation |
+| `groupby.py` | Group by one column, count, sort descending |
+| `mock_generate.py` | Infer Faker generators from headers, write synthetic CSVs |
+
+### `runners/`
+
+| Module | Purpose |
+|--------|---------|
+| `pipeline_factory.py` | Assembles load → preprocess → execute Dagster jobs |
+| `atom_runner.py` | Reusable load/execute ops with processed/rejected/notification lifecycle |
+| `ops.py` | First-run config ops for VLOOKUP, GroupBy, and mock generator |
+| `composite.py` | VLOOKUP → GroupBy chain with shared config |
+
+### `sensors/`
+
+| Module | Purpose |
+|--------|---------|
+| `hot_folder_sensor.py` | Per-pipeline sensor factory: stability check, staging, sweeper |
+
+### `helpers/`
+
+| Module | Purpose |
+|--------|---------|
+| `folders.py` | `PipelineFolders` class — per-pipeline directory lifecycle |
+| `config_store.py` | JSON config read/write per pipeline |
+| `column_picker.py` | Tkinter UI for VLOOKUP join/output column selection |
+| `notifier.py` | macOS/Windows toast notifications, opens output folder on success |
+| `file_picker.py` | Standalone Tkinter file dialog (not used by registered jobs) |
+| `mock_generator.py` | Standalone CLI mock generator (separate from the atom/job) |
+
+### Runtime data
+
+- `pipelines/<job>/` — inbox, staging, processed, rejected, output, config.json
+- `dagster.yaml` — SQLite storage configuration
+- `dagster_storage/` — Dagster run history (persists across restarts)
+
+## File and configuration lifecycle
+
+```text
+inbox/ → sensor stability check → staging/ → job runs
+                                    ├→ processed/ + output/       (success)
+                                    └→ rejected/ + *.error.txt    (failure)
 ```
 
-Files that don't match `*.csv`/`*.xlsx` are swept to `rejected/` after 3 minutes.
+Non-matching files (not `*.csv`/`*.xlsx`) are swept to `rejected/` after 3
+minutes with an error description.
 
-## Config Init Pattern
+### Config init pattern
 
-1. First run: pre-process op detects no `config.json` → shows Tkinter UI → saves selections
-2. Future runs: loads config silently, no user interaction needed
-3. To reconfigure: delete `config.json` or pass `reconfigure: true` in op config
+1. First run: pre-process op detects no `config.json` → shows Tkinter UI → saves
+2. Future runs: loads config silently, fully automated
+3. To reconfigure: delete `pipelines/<job>/config.json`
 
-## Adding a New Business Pipeline
+### Saved config fields
 
-1. **Choose or create an atom** in `logic/atoms/` (pure function, no domain knowledge)
-2. **Create a pre-process op** in `runners/ops.py` (with config init pattern)
-3. **Register in `pipeline.py`:**
+| Job | Fields |
+|-----|--------|
+| `vlookup_rollnumber` | `left_column`, `right_column`, `left_output_columns`, `right_output_columns` |
+| `groupby_religion` | `group_column` |
+| `vlookup_then_groupby` | All VLOOKUP fields + `group_column` |
+| `mock_generator` | None |
+
+## Important behavior
+
+- Two-file jobs: lexical filename order determines left/right assignment.
+- Atom failures and config cancellation move staged files to `rejected/`.
+- Unexpected crashes may leave files in `staging/` — recover manually.
+- Notifications are best-effort. Linux has no implementation.
+- On success, macOS/Windows opens the output folder immediately (not a click
+  action).
+
+## Adding a new business pipeline
+
+1. Create or reuse an atom in `logic/atoms/` with `execute(params_json) -> str`
+2. Create a pre-process op in `runners/ops.py` (with config init pattern)
+3. Register in `pipeline.py`:
    ```python
    my_pipeline = build_business_pipeline(
        pipeline_name="my_pipeline",
@@ -131,23 +156,13 @@ Files that don't match `*.csv`/`*.xlsx` are swept to `rejected/` after 3 minutes
        pre_process_op=my_pre_process_op,
    )
    ```
-4. **Add sensor in `definitions.py`:**
+4. Add sensor in `definitions.py`:
    ```python
    my_sensor = build_hot_folder_sensor("my_pipeline", "my_pipeline", min_files=1)
    ```
-5. Folders `pipelines/my_pipeline/{inbox,staging,processed,rejected,output}/` are created automatically.
+5. Folders are created automatically on import.
 
-## Notifications
+## Development status
 
-Native OS toast on success/failure. On success, opens the output folder:
-- **macOS** — AppleScript + `open`
-- **Windows** — PowerShell toast + `explorer.exe`
-
-## Troubleshooting
-
-| Symptom | Fix |
-|---------|-----|
-| Sensor not triggering | Enable it in UI; check correct inbox folder |
-| Config UI appears every run | Verify `config.json` was saved in pipeline folder |
-| Files stuck in staging | Pipeline may have crashed — check Dagster logs, move files manually |
-| Wrong columns in output | Delete `config.json`, re-run to reconfigure |
+No automated tests, lint, or pinned dependency versions. Validate by loading
+definitions and exercising jobs with disposable CSV inputs.

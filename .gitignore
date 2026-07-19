@@ -30,5 +30,10 @@ pipelines/*/output/
 pipelines/*/config.json
 your_file_*.csv
 
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
 # IDE / tools
 .claude/

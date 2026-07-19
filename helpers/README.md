@@ -1,35 +1,43 @@
 # helpers/
 
-Cross-cutting utilities for UI, file management, config, and platform abstractions.
+Cross-cutting utilities for file management, config, UI, and notifications.
 
-## Modules
+## `folders.py`
 
-### folders.py
+`PipelineFolders(pipeline_name)` — per-pipeline directory lifecycle:
+- Properties: `.inbox`, `.staging`, `.processed`, `.rejected`, `.output`,
+  `.config_path`
+- Methods: `.ensure()`, `.move_to_staging()`, `.move_to_processed()`,
+  `.move_to_rejected(file_paths, reason)`, `.list_inbox_files(pattern)`,
+  `.output_path(filename)`
 
-`PipelineFolders(pipeline_name)` — Manages per-pipeline folder lifecycle:
-- `.inbox`, `.staging`, `.processed`, `.rejected`, `.output`, `.config_path`
-- `.move_to_staging()`, `.move_to_processed()`, `.move_to_rejected(reason)`
-- `.list_inbox_files(pattern)`, `.output_path(filename)`, `.ensure()`
-
-### config_store.py
+## `config_store.py`
 
 Per-pipeline JSON config persistence:
 - `load_config(folders)` — Returns saved dict or None
-- `save_config(folders, config)` — Writes config.json
-- `config_exists(folders)` — Check if config exists
+- `save_config(folders, config)` — Writes `config.json`
+- `config_exists(folders)` — Boolean check
 
-### column_picker.py
+## `column_picker.py`
 
-Tkinter dialog for selecting join and output columns with dtype validation.
+Tkinter dialog for VLOOKUP join/output column selection. Shows columns from
+both files with dtypes, validates type compatibility on join columns, and
+allows multi-select for output columns from both sides.
 
-### notifier.py
+## `notifier.py`
 
-Cross-platform OS notifications (macOS: osascript, Windows: PowerShell). Opens output folder on success.
+Best-effort native OS notifications:
+- macOS: AppleScript via `osascript`
+- Windows: PowerShell toast API
+- Opens output folder immediately on success (not a click action)
+- Fails silently on unsupported platforms (Linux)
 
-### file_picker.py
+## `file_picker.py`
 
-Tkinter file dialog for manual file selection.
+Standalone Tkinter file-selection helper. Not used by registered Dagster jobs
+(the sensor provides files). Available for manual/ad-hoc use.
 
-### mock_generator.py
+## `mock_generator.py`
 
-Generates fake CSV data from real file headers using Faker.
+Standalone two-file CLI mock-data generator. This is separate from the
+registered `mock_generator` atom/job — it predates the Dagster integration.
