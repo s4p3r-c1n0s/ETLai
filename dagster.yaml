@@ -1,7 +1,3 @@
 storage:
   sqlite:
     base_dir: dagster_storage
-
-run_launcher:
-  module: dagster._core.launcher.sync_in_process_run_launcher
-  class: SyncInProcessRunLauncher
