@@ -62,7 +62,7 @@ def build_hot_folder_sensor(pipeline_name: str, job_name: str, min_files: int = 
     if load_files_op_name is None:
         load_files_op_name = f"{job_name}__load_files"
 
-    @sensor(name=sensor_name, job_name=job_name, minimum_interval_seconds=10)
+    @sensor(name=sensor_name, job_name=job_name, minimum_interval_seconds=30)
     def _sensor(context: SensorEvaluationContext):
         _sweep_rejected(folders, context)
 
