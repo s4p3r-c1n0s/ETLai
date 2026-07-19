@@ -1,13 +1,14 @@
-"""Pure business logic atom: performs a VLOOKUP-equivalent left join. Zero framework dependencies."""
+"""Core atom: performs a VLOOKUP-equivalent left join. Zero domain knowledge."""
 
 import json
 
 import pandas as pd
 
 
-def vlookup(params_json: str) -> str:
+def execute(params_json: str) -> str:
     """
-    Accepts JSON: {"left_file", "right_file", "lookup_column", "output_columns", "target_path"}
+    Accepts JSON: {"left_file", "right_file", "left_column", "right_column",
+                   "left_output_columns", "right_output_columns", "target_path"}
     Returns JSON: {"success": bool, "row_count": int, "message": str}
     """
     try:
