@@ -1,61 +1,131 @@
-"""Dagster @op adapters bridging UI layer to pure logic atoms."""
+"""Business pipeline pre-processing ops with config init pattern.
+First run: shows Tkinter UI, saves config.
+Subsequent runs: loads from config, skips UI.
+Set reconfigure=true in op config to force UI again."""
 
-import json
-
-from dagster import In, Nothing, OpExecutionContext, Out, op
+from dagster import In, OpExecutionContext, Out, op
 
 from helpers.column_picker import pick_columns
-from helpers.file_picker import pick_files
-from logic.vlookup_atom import vlookup
+from helpers.config_store import config_exists, load_config, save_config
+from helpers.folders import PipelineFolders
+from helpers.notifier import notify
 
 
-@op(out={"file_paths": Out()})
-def pick_source_files_op(context: OpExecutionContext) -> list[str]:
-    """Opens Tkinter file picker and returns selected file paths."""
-    context.log.info("Opening file picker dialog...")
-    paths = pick_files(count=2)
-    context.log.info(f"Selected files: {paths}")
-    context.add_output_metadata({"file_a": paths[0], "file_b": paths[1]})
-    return paths
+def _should_reconfigure(context: OpExecutionContext) -> bool:
+    return bool(context.op_config.get("reconfigure")) if context.op_config else False
 
 
-@op(ins={"file_paths": In(list)}, out={"column_mapping": Out()})
-def pick_columns_op(context: OpExecutionContext, file_paths: list[str]) -> dict:
-    """Opens Tkinter column picker to let user select join columns with dtype validation."""
-    context.log.info("Opening column picker dialog...")
-    column_mapping = pick_columns(file_paths[0], file_paths[1])
-    context.log.info(
-        f"Selected columns: left='{column_mapping['left_column']}', "
-        f"right='{column_mapping['right_column']}'"
-    )
-    context.add_output_metadata(column_mapping)
-    return column_mapping
+@op(name="vlookup_rollnumber__pre_process", ins={"file_paths": In(list)}, out={"params": Out()})
+def vlookup_rollnumber_pre_process_op(context: OpExecutionContext, file_paths: list[str]) -> dict:
+    """Config init for vlookup on roll number. Shows column picker on first run only."""
+    folders = PipelineFolders("vlookup_rollnumber")
+    reconfigure = _should_reconfigure(context)
 
+    if not reconfigure and config_exists(folders):
+        config = load_config(folders)
+        context.log.info(f"Loaded saved config: {config}")
+        config["left_file"] = file_paths[0]
+        config["right_file"] = file_paths[1]
+        return config
 
-@op(ins={"file_paths": In(list), "column_mapping": In(dict)})
-def vlookup_op(context: OpExecutionContext, file_paths: list[str], column_mapping: dict) -> None:
-    """Wraps the vlookup atom with Dagster metadata and logging."""
-    params = {
-        "left_file": file_paths[0],
-        "right_file": file_paths[1],
+    context.log.info("No config found or reconfigure requested. Opening column picker...")
+    try:
+        column_mapping = pick_columns(file_paths[0], file_paths[1])
+    except Exception as e:
+        folders.move_to_rejected(file_paths, f"Config init cancelled: {e}")
+        notify(title="VLOOKUP Roll Number — Failed", message=f"Config cancelled: {e}"[:200])
+        raise
+
+    config = {
         "left_column": column_mapping["left_column"],
         "right_column": column_mapping["right_column"],
         "left_output_columns": column_mapping["left_output_columns"],
         "right_output_columns": column_mapping["right_output_columns"],
-        "target_path": context.op_config.get("target_path", "data/output.csv"),
     }
+    save_config(folders, config)
+    context.log.info(f"Saved config: {config}")
 
-    context.log.info(f"Running VLOOKUP with params: {json.dumps(params, indent=2)}")
-    result_json = vlookup(json.dumps(params))
-    result = json.loads(result_json)
+    config["left_file"] = file_paths[0]
+    config["right_file"] = file_paths[1]
+    return config
 
-    if result["success"]:
-        context.log.info(result["message"])
-        context.add_output_metadata({
-            "row_count": result["row_count"],
-            "output_file": params["target_path"],
-            "status": "SUCCESS",
-        })
-    else:
-        context.log.error(result["message"])
-        raise RuntimeError(f"VLOOKUP failed: {result['message']}")
+
+@op(name="groupby_religion__pre_process", ins={"file_paths": In(list)}, out={"params": Out()})
+def groupby_religion_pre_process_op(context: OpExecutionContext, file_paths: list[str]) -> dict:
+    """Config init for groupby on religion column. Shows picker on first run only."""
+    import tkinter as tk
+    from tkinter import ttk
+
+    import pandas as pd
+
+    folders = PipelineFolders("groupby_religion")
+    reconfigure = _should_reconfigure(context)
+
+    if not reconfigure and config_exists(folders):
+        config = load_config(folders)
+        context.log.info(f"Loaded saved config: {config}")
+        config["input_file"] = file_paths[0]
+        return config
+
+    context.log.info("No config found or reconfigure requested. Opening column picker...")
+    df = pd.read_csv(file_paths[0], nrows=5)
+    columns = list(df.columns)
+
+    result = {}
+
+    root = tk.Tk()
+    root.title("Select Group By Column")
+    root.attributes("-topmost", True)
+    root.resizable(False, False)
+
+    frame = ttk.Frame(root, padding=20)
+    frame.grid(row=0, column=0)
+
+    ttk.Label(frame, text="Select column to group by:", font=("TkDefaultFont", 11, "bold")).grid(
+        row=0, column=0, sticky="w", pady=(0, 5)
+    )
+
+    listbox = tk.Listbox(frame, width=40, height=10, exportselection=False)
+    for col in columns:
+        listbox.insert(tk.END, f"{col}  ({df[col].dtype})")
+    listbox.grid(row=1, column=0)
+
+    status_label = ttk.Label(frame, text="", foreground="red")
+    status_label.grid(row=2, column=0, pady=(10, 0))
+
+    def on_confirm():
+        sel = listbox.curselection()
+        if not sel:
+            status_label.config(text="Please select a column.")
+            return
+        result["group_column"] = columns[sel[0]]
+        root.destroy()
+
+    def on_cancel():
+        root.destroy()
+
+    btn_frame = ttk.Frame(frame)
+    btn_frame.grid(row=3, column=0, pady=(15, 0))
+    ttk.Button(btn_frame, text="Confirm", command=on_confirm).pack(side="left", padx=5)
+    ttk.Button(btn_frame, text="Cancel", command=on_cancel).pack(side="left", padx=5)
+
+    root.mainloop()
+
+    if not result:
+        folders.move_to_rejected(file_paths, "Config init cancelled by user.")
+        notify(title="GroupBy Religion — Failed", message="Config cancelled by user.")
+        raise RuntimeError("Column selection cancelled by user.")
+
+    config = {"group_column": result["group_column"]}
+    save_config(folders, config)
+    context.log.info(f"Saved config: {config}")
+
+    config["input_file"] = file_paths[0]
+    return config
+
+
+@op(name="mock_generator__pre_process", ins={"file_paths": In(list)}, out={"params": Out()})
+def mock_generator_pre_process_op(context: OpExecutionContext, file_paths: list[str]) -> dict:
+    """Passthrough for mock generator — passes all input files."""
+    folders = PipelineFolders("mock_generator")
+    return {"input_files": file_paths, "target_path": folders.output}
