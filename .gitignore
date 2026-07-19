@@ -1,1 +1,34 @@
-# Created by venv; see https://docs.python.org/3/library/venv.html
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Virtual environment
+bin/
+lib/
+include/
+pyvenv.cfg
+
+# Node
+node_modules/
+package-lock.json
+
+# Dagster
+dagster_storage/
+.tmp_dagster_home*/
+
+# OS
+.DS_Store
+
+# Data (user files, not source code)
+data/
+pipelines/*/inbox/
+pipelines/*/staging/
+pipelines/*/processed/
+pipelines/*/rejected/
+pipelines/*/output/
+pipelines/*/config.json
+your_file_*.csv
+
+# IDE / tools
+.claude/
