@@ -1,168 +1,154 @@
-# Air-Gapped Desktop Automation Engine
+# ETLai
 
-A local Dagster application for folder-driven CSV transformations. Source files,
-saved column choices, generated outputs, and Dagster run storage remain on the
-machine.
+A local, AI-assisted data transformation engine built on Dagster. Install it,
+scaffold a project, and let Claude Code create new pipelines — from CSV
+transformations to API ingestion.
+
+## Install
+
+```bash
+pip install ETLai
+```
+
+Requires Python 3.10+ and Tkinter (ships with most Python installations).
+
+## Quick start
+
+```bash
+etlai init ~/my-etl
+cd ~/my-etl
+etlai sync
+etlai run
+```
+
+This starts a Dagster dev server at `http://localhost:3000`. Enable sensors in
+the UI, then drop CSV files into `pipelines/<name>/inbox/`.
+
+## Commands
+
+| Command | Purpose |
+|---------|---------|
+| `etlai init <dir>` | Scaffold a new project with example pipelines |
+| `etlai sync` | Validate manifests, create folders, prompt for `path: ask`, check env files |
+| `etlai run` | Start the Dagster dev server |
+| `etlai list` | Show all registered pipelines |
 
 ## How it works
 
-Each business pipeline has an inbox and a Dagster sensor. The sensor waits for
-the required number of stable files, moves them to staging, and launches a job.
-The job prepares atom parameters, executes the transformation, then moves source
-files to `processed/` or `rejected/`.
+Each pipeline is defined by a **manifest** (`pipelines/<name>/manifest.yaml`)
+that wires together:
 
-An **atom** is a reusable transformation module with an
-`execute(params_json) -> result_json` interface. Atoms are domain-agnostic —
-they have no opinion on which column or business context. They do read and write
-files, so they are not side-effect-free.
-
-A **business pipeline** applies an atom to specific domain data with its own
-folder lifecycle, sensor, and saved configuration.
-
-## Registered jobs
-
-| Job | Files needed | Description |
-|-----|-------------|-------------|
-| `vlookup_rollnumber` | 2 CSV | Left-join on user-chosen columns (first run: Tkinter picker, then saved) |
-| `groupby_religion` | 1 CSV | Group by user-chosen column with counts, sorted descending |
-| `mock_generator` | 1+ CSV | Generate synthetic data from file headers using Faker |
-| `vlookup_then_groupby` | 2 CSV | Composite: VLOOKUP → GroupBy in a single job |
-
-Each job has a same-named sensor. Sensors must be enabled in Dagster UI before
-they process inbox files.
-
-## Installation
-
-Python 3.10+ required.
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate       # Windows: .venv\Scripts\activate
-python -m pip install -r requirements.txt
-```
-
-Tkinter must be available in the Python installation for first-run config.
-
-## Run
-
-```bash
-DAGSTER_HOME="$(pwd)" dagster dev -m definitions
-```
-
-Open `http://localhost:3000`, enable the desired sensor, and place files in
-`pipelines/<job-name>/inbox/`.
-
-Manual execution without UI:
-
-```bash
-DAGSTER_HOME="$(pwd)" dagster job execute -m definitions -j vlookup_rollnumber
-```
-
-## Source modules
-
-### Entry points
-
-| File | Role |
-|------|------|
-| `definitions.py` | Registers all jobs and sensors with Dagster |
-| `pipeline.py` | Builds single-atom business jobs via the factory |
-| `runners/composite.py` | Defines the `vlookup_then_groupby` composite job |
-
-### `logic/atoms/`
-
-| Module | Purpose |
-|--------|---------|
-| `vlookup.py` | Left join two CSVs on specified columns with dtype validation |
-| `groupby.py` | Group by one column, count, sort descending |
-| `mock_generate.py` | Infer Faker generators from headers, write synthetic CSVs |
-
-### `runners/`
-
-| Module | Purpose |
-|--------|---------|
-| `pipeline_factory.py` | Assembles load → preprocess → execute Dagster jobs |
-| `atom_runner.py` | Reusable load/execute ops with processed/rejected/notification lifecycle |
-| `ops.py` | First-run config ops for VLOOKUP, GroupBy, and mock generator |
-| `composite.py` | VLOOKUP → GroupBy chain with shared config |
-
-### `sensors/`
-
-| Module | Purpose |
-|--------|---------|
-| `hot_folder_sensor.py` | Per-pipeline sensor factory: stability check, staging, sweeper |
-
-### `helpers/`
-
-| Module | Purpose |
-|--------|---------|
-| `folders.py` | `PipelineFolders` class — per-pipeline directory lifecycle |
-| `config_store.py` | JSON config read/write per pipeline |
-| `column_picker.py` | Tkinter UI for VLOOKUP join/output column selection |
-| `notifier.py` | macOS/Windows toast notifications, opens output folder on success |
-| `file_picker.py` | Standalone Tkinter file dialog (not used by registered jobs) |
-| `mock_generator.py` | Standalone CLI mock generator (separate from the atom/job) |
-
-### Runtime data
-
-- `pipelines/<job>/` — inbox, staging, processed, rejected, output, config.json
-- `dagster.yaml` — SQLite storage configuration
-- `dagster_storage/` — Dagster run history (persists across restarts)
-
-## File and configuration lifecycle
+- **Atom** — a reusable, single-unit-of-work transformation
+- **Form** — first-run Tkinter UI that collects config (or passthrough for no-UI)
+- **Trigger** — what causes the pipeline to run (file sensor, cron schedule, or both)
 
 ```text
-inbox/ → sensor stability check → staging/ → job runs
-                                    ├→ processed/ + output/       (success)
-                                    └→ rejected/ + *.error.txt    (failure)
+Trigger fires → load files (if any) → configure (form/config.json) → execute atom
+                                        ├→ processed/ + output/     (success)
+                                        └→ rejected/ + *.error.txt  (failure)
 ```
 
-Non-matching files (not `*.csv`/`*.xlsx`) are swept to `rejected/` after 3
-minutes with an error description.
+## Pipeline types
 
-### Config init pattern
+### File-based (CSV transformation)
 
-1. First run: pre-process op detects no `config.json` → shows Tkinter UI → saves
-2. Future runs: loads config silently, fully automated
-3. To reconfigure: delete `pipelines/<job>/config.json`
+Drop files into `inbox/`. Sensor detects stable files and triggers the pipeline.
 
-### Saved config fields
+```yaml
+name: vlookup_rollnumber
+atom: vlookup
+form: vlookup_column_picker
+min_files: 2
+```
 
-| Job | Fields |
-|-----|--------|
-| `vlookup_rollnumber` | `left_column`, `right_column`, `left_output_columns`, `right_output_columns` |
-| `groupby_religion` | `group_column` |
-| `vlookup_then_groupby` | All VLOOKUP fields + `group_column` |
-| `mock_generator` | None |
+### API-based (data ingestion)
 
-## Important behavior
+Fetch data from REST APIs on a schedule. No inbox files needed.
 
-- Two-file jobs: lexical filename order determines left/right assignment.
-- Atom failures and config cancellation move staged files to `rejected/`.
-- Unexpected crashes may leave files in `staging/` — recover manually.
-- Notifications are best-effort. Linux has no implementation.
-- On success, macOS/Windows opens the output folder immediately (not a click
-  action).
+```yaml
+name: fetch_hr_data
+atom: hr_api_fetch
+form: passthrough
+min_files: 0
+env_file: ~/.etlai/secrets.env
+requires_env:
+  - HR_API_TOKEN
+trigger:
+  rules:
+    - type: schedule
+      cron: "0 8 * * *"
+```
 
-## Adding a new business pipeline
+### Composite (multi-step chains)
 
-1. Create or reuse an atom in `logic/atoms/` with `execute(params_json) -> str`
-2. Create a pre-process op in `runners/ops.py` (with config init pattern)
-3. Register in `pipeline.py`:
-   ```python
-   my_pipeline = build_business_pipeline(
-       pipeline_name="my_pipeline",
-       atom_module=my_atom,
-       atom_label="My Pipeline",
-       pre_process_op=my_pre_process_op,
-   )
-   ```
-4. Add sensor in `definitions.py`:
-   ```python
-   my_sensor = build_hot_folder_sensor("my_pipeline", "my_pipeline", min_files=1)
-   ```
-5. Folders are created automatically on import.
+Chain multiple atoms. Output of each step feeds into the next.
 
-## Development status
+```yaml
+name: vlookup_then_groupby
+min_files: 2
+steps:
+  - atom: vlookup
+    form: vlookup_column_picker
+  - atom: groupby
+    form: groupby_picker
+```
 
-No automated tests, lint, or pinned dependency versions. Validate by loading
-definitions and exercising jobs with disposable CSV inputs.
+## Shipped atoms
+
+| Atom | Description |
+|------|-------------|
+| `vlookup` | Left join two CSVs on specified columns with dtype validation |
+| `groupby` | Group by column with count, sorted descending |
+| `mock_generate` | Generate synthetic data from file headers using Faker |
+| `api_fetch` | Generic REST API fetcher (JSON/XML/CSV, field mapping, env-based auth) |
+
+## Shipped forms
+
+| Form | Description |
+|------|-------------|
+| `vlookup_column_picker` | Join + output column multi-select with dtype validation |
+| `groupby_picker` | Single column selection |
+| `passthrough` | No UI — reads config.json and passes to atom |
+
+## Key concepts
+
+### Reference folder
+
+`reference/` holds permanent data used across runs (lookup tables, previous API
+snapshots). The framework passes reference file paths to atoms automatically.
+
+### Custom data paths
+
+`path: ask` in a manifest prompts the user (via folder picker) during `etlai sync`
+to choose where data folders live. Each pipeline can have its own location.
+
+### Credentials
+
+API credentials live in env files outside the project (e.g. `~/.etlai/secrets.env`).
+The framework loads them before atom execution. `etlai sync` validates required
+vars are present without printing values.
+
+### Adding pipelines with Claude Code
+
+Open your project in Claude Code. The scaffolded `CLAUDE.md` teaches it to:
+1. Create atoms (or reuse shipped ones)
+2. Create forms (or use passthrough with pre-written config.json)
+3. Write manifest.yaml
+4. Run `etlai sync`
+
+## Resolution order
+
+- Atoms: `./atoms/<name>.py` → `etlai.atoms.<name>` (package)
+- Forms: `./forms/<name>.py` → `etlai.forms.<name>` (package)
+
+User files take precedence over shipped ones.
+
+## Development
+
+```bash
+git clone <repo>
+pip install -e .
+etlai init /tmp/test-project
+cd /tmp/test-project
+etlai run
+```
