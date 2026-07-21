@@ -4,62 +4,59 @@ Guidance for coding agents working in this repository.
 
 ## Project overview
 
-A local, folder-driven Dagster application for CSV transformations. Four
-registered jobs: `vlookup_rollnumber`, `groupby_religion`, `mock_generator`,
-and the composite `vlookup_then_groupby`.
+ETLai is a pip-installable Python package that provides a local, folder-driven
+Dagster CSV transformation engine. Users run `etlai init` to scaffold a project,
+then use Claude Code to create new pipelines.
 
-The `package.json` dependency on Claude Code is optional tooling unrelated to the
-Python/Dagster runtime.
+The package ships reusable atoms, forms, sensors, helpers, and a CLI. User
+projects contain manifests, custom atoms/forms, and data folders.
+
+## Package structure
+
+```
+etlai/
+  cli.py              ← etlai init/sync/run/list commands
+  registry.py         ← scans manifests, dynamically builds Dagster Definitions
+  atoms/              ← shipped atoms (vlookup, groupby, mock_generate)
+  forms/              ← shipped forms (vlookup_column_picker, groupby_picker, passthrough)
+  helpers/            ← folders, config_store, notifier
+  sensors/            ← hot_folder_sensor factory
+  runners/            ← (reserved for future use)
+  scaffold/           ← templates copied by etlai init
+```
 
 ## Common commands
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
-DAGSTER_HOME="$(pwd)" dagster dev -m definitions
+pip install -e .                    # install in dev mode
+etlai init /tmp/test && cd /tmp/test
+etlai sync                          # validate manifests, create folders
+etlai run                           # start Dagster dev server
 ```
-
-Execute one job without the web UI:
-
-```bash
-DAGSTER_HOME="$(pwd)" dagster job execute -m definitions -j <job-name>
-```
-
-No automated tests, formatter, or linter are currently configured.
 
 ## Architecture
 
-- `definitions.py` registers all jobs and sensors.
-- `pipeline.py` builds the three single-atom business jobs via the factory.
-- `logic/atoms/` contains JSON-in/JSON-out file transformation modules (atoms).
-- `runners/` assembles jobs, preprocesses parameters, executes atoms, and
-  defines the composite job.
-- `sensors/hot_folder_sensor.py` stages stable inbox files and launches jobs.
-- `helpers/` owns folder lifecycle, saved config, Tkinter UIs, notifications,
-  and standalone utilities.
-- `pipelines/` contains runtime data (inbox/staging/processed/rejected/output
-  and per-job config.json). These are not Python modules.
+- `registry.py` scans `pipelines/*/manifest.yaml` and builds all Dagster jobs +
+  sensors dynamically. No static imports.
+- Each manifest wires: atom + form + min_files + optional path
+- Atoms: `execute(params_json: str) -> str` returning `{"success": bool, "message": str}`
+- Forms: `configure(file_paths: list[str], existing_config: dict | None) -> dict`
+- Resolution: user `atoms/`/`forms/` → package `etlai.atoms`/`etlai.forms`
+- `PipelineFolders` reads the manifest `path` field or falls back to `pipelines/<name>/`
+- `config.json` is the single source of business config — written by form UI or by Claude Code
 
 ## Key conventions
 
-- **Atoms** are domain-agnostic reusable transformations. They read/write files
-  but have zero knowledge of which columns or business context they serve.
-- **Business pipelines** apply atoms to specific domain data with their own
-  folder lifecycle, sensor, and saved configuration.
-- When given a new data task, separate the generic transformation (atom) from
-  the domain-specific application (business pipeline).
+- Atoms are domain-agnostic. Business logic lives in `config.json`.
+- Forms are first-run UI only. For no-UI pipelines, use `passthrough` and pre-write `config.json`.
+- `path: ask` in manifests triggers a folder picker during `etlai sync`.
+- Scaffold CLAUDE.md teaches end-user Claude Code sessions how to add pipelines.
 
 ## Important constraints
 
-- Python 3.10+ required (type annotations use `X | None` syntax).
-- Sensor accepts `.csv` and `.xlsx` filenames but atoms use CSV readers only.
-  Use CSV for end-to-end processing.
-- Two-file jobs assign left/right by lexical filename order.
-- First-run config opens Tkinter — process needs desktop access.
-- Saved configs and generated outputs are gitignored.
-- Do not inspect or commit user CSV/Excel/output/processed/rejected/staging
-  content or Dagster storage.
-- Notifications are best-effort; Linux has no implementation.
-- On success, macOS/Windows notifications open the output folder immediately
-  (not a click action).
+- Python 3.10+ required
+- CSV only for processing (sensors accept .xlsx filenames but atoms use CSV readers)
+- Tkinter required for first-run config forms
+- Do not commit pipeline runtime data (inbox, staging, processed, rejected, output, config.json)
+- The old top-level `logic/`, `runners/`, `sensors/`, `helpers/`, `pipeline.py`, `definitions.py`
+  are legacy — all active code lives under `etlai/`
