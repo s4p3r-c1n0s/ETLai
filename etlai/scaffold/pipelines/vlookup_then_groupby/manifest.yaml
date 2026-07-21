@@ -1,0 +1,8 @@
+name: vlookup_then_groupby
+min_files: 2
+load_files_op_name: vlookup_then_groupby__load_files
+steps:
+  - atom: vlookup
+    form: vlookup_column_picker
+  - atom: groupby
+    form: groupby_picker
