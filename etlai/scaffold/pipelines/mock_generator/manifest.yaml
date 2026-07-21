@@ -1,0 +1,4 @@
+name: mock_generator
+atom: mock_generate
+form: passthrough
+min_files: 1

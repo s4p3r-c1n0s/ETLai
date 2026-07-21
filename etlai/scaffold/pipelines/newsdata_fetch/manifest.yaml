@@ -1,0 +1,11 @@
+name: newsdata_fetch
+atom: api_fetch
+form: passthrough
+min_files: 0
+env_file: ~/.etlai/secrets.env
+requires_env:
+  - NEWSDATA_API_KEY
+trigger:
+  rules:
+    - type: schedule
+      cron: "*/5 3-4 * * *"

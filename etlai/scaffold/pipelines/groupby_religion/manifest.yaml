@@ -1,0 +1,4 @@
+name: groupby_religion
+atom: groupby
+form: groupby_picker
+min_files: 1
