@@ -44,8 +44,8 @@ pytest --maxfail=1 --tb=short
 # - If tests/ changed, flag TESTS.md
 
 # 3. Verify staged files are consistent
-# - README version matches pyproject.toml version
-# - No TODO/FIXME in production code (warnings only)
+# - Version in pyproject.toml matches etlai/__init__.py
+# - TODO/FIXME in production code (warnings only)
 ```
 
 ### Bypassing the hook

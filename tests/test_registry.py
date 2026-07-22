@@ -158,14 +158,20 @@ class TestTriggerBuilding:
     def test_build_schedule_definition(self):
         """Test building a schedule definition."""
         from etlai.registry import _build_schedule_definition
+        from dagster import job, op
 
-        # Create a mock job (just a callable for this test)
-        mock_job = lambda: None
-        mock_job.__name__ = "test_job"
+        # Create a real Dagster job for this test
+        @op
+        def test_op():
+            pass
+
+        @job
+        def test_job():
+            test_op()
 
         rule = {"cron": "0 8 * * *"}
 
-        schedule = _build_schedule_definition("test_pipeline", mock_job, rule)
+        schedule = _build_schedule_definition("test_pipeline", test_job, rule)
 
         assert schedule is not None
         assert schedule.name == "test_pipeline_schedule"

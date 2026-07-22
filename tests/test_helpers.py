@@ -76,21 +76,23 @@ class TestEnvLoader:
 
         load_env_file(str(mock_env_file))
 
-        # Should not raise
-        validate_env_vars(["API_KEY", "API_URL"])
+        # Should return empty list (no missing vars)
+        missing = validate_env_vars(str(mock_env_file), ["API_KEY", "API_URL"])
+        assert missing == []
 
         # Cleanup
         del os.environ["API_KEY"]
         del os.environ["API_URL"]
 
-    def test_validate_env_vars_missing(self):
+    def test_validate_env_vars_missing(self, tmp_path):
         """Test validation fails when vars are missing."""
         from etlai.helpers.env_loader import validate_env_vars
 
-        os.environ.pop("MISSING_VAR", None)
+        env_file = tmp_path / "empty.env"
+        env_file.write_text("")
 
-        with pytest.raises(RuntimeError, match="Missing required"):
-            validate_env_vars(["MISSING_VAR"])
+        missing = validate_env_vars(str(env_file), ["MISSING_VAR"])
+        assert "MISSING_VAR" in missing
 
 
 class TestPipelineFolders:
@@ -108,12 +110,12 @@ class TestPipelineFolders:
         folders = PipelineFolders("test_pipeline")
         folders.ensure()
 
-        assert folders.inbox.exists()
-        assert folders.staging.exists()
-        assert folders.processed.exists()
-        assert folders.rejected.exists()
-        assert folders.output.exists()
-        assert folders.reference.exists()
+        assert Path(folders.inbox).exists()
+        assert Path(folders.staging).exists()
+        assert Path(folders.processed).exists()
+        assert Path(folders.rejected).exists()
+        assert Path(folders.output).exists()
+        assert Path(folders.reference).exists()
 
     def test_list_inbox_files(self, tmp_path, monkeypatch):
         """Test listing files in inbox."""
@@ -129,9 +131,9 @@ class TestPipelineFolders:
         folders.ensure()
 
         # Create test files
-        (folders.inbox / "data1.csv").write_text("test")
-        (folders.inbox / "data2.xlsx").write_text("test")
-        (folders.inbox / "ignored.txt").write_text("test")
+        (Path(folders.inbox) / "data1.csv").write_text("test")
+        (Path(folders.inbox) / "data2.xlsx").write_text("test")
+        (Path(folders.inbox) / "ignored.txt").write_text("test")
 
         pattern = re.compile(r"^(.+)\.(csv|xlsx)$", re.IGNORECASE)
         files = folders.list_inbox_files(pattern)
@@ -154,7 +156,7 @@ class TestPipelineFolders:
         folders.ensure()
 
         # Create test file
-        inbox_file = folders.inbox / "data.csv"
+        inbox_file = Path(folders.inbox) / "data.csv"
         inbox_file.write_text("test")
 
         # Move to staging
@@ -163,7 +165,7 @@ class TestPipelineFolders:
         assert len(staged) == 1
         assert not inbox_file.exists()
         assert Path(staged[0]).exists()
-        assert Path(staged[0]).parent == folders.staging
+        assert str(Path(staged[0]).parent) == folders.staging
 
     def test_move_to_processed(self, tmp_path, monkeypatch):
         """Test moving files to processed folder."""
@@ -178,14 +180,14 @@ class TestPipelineFolders:
         folders.ensure()
 
         # Create test file in staging
-        staging_file = folders.staging / "data.csv"
+        staging_file = Path(folders.staging) / "data.csv"
         staging_file.write_text("test")
 
         # Move to processed
         folders.move_to_processed([str(staging_file)])
 
         assert not staging_file.exists()
-        assert (folders.processed / "data.csv").exists()
+        assert (Path(folders.processed) / "data.csv").exists()
 
     def test_move_to_rejected(self, tmp_path, monkeypatch):
         """Test moving files to rejected with error message."""
@@ -200,7 +202,7 @@ class TestPipelineFolders:
         folders.ensure()
 
         # Create test file
-        staging_file = folders.staging / "data.csv"
+        staging_file = Path(folders.staging) / "data.csv"
         staging_file.write_text("test")
 
         # Move to rejected
@@ -208,8 +210,8 @@ class TestPipelineFolders:
         folders.move_to_rejected([str(staging_file)], error_msg)
 
         assert not staging_file.exists()
-        assert (folders.rejected / "data.csv").exists()
-        assert (folders.rejected / "data.csv.error.txt").exists()
+        assert (Path(folders.rejected) / "data.csv").exists()
+        assert (Path(folders.rejected) / "data.csv.error.txt").exists()
 
-        error_content = (folders.rejected / "data.csv.error.txt").read_text()
+        error_content = (Path(folders.rejected) / "data.csv.error.txt").read_text()
         assert error_msg in error_content

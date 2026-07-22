@@ -19,10 +19,10 @@ if [[ "$MSG" =~ ^(release:|chore:\ bump\ version) ]]; then
     NEW_VERSION=$(grep '^version = ' pyproject.toml | cut -d'"' -f2)
     INIT_VERSION=$(grep '__version__ = ' etlai/__init__.py | cut -d'"' -f2)
 
-    # Check RELEASE.md has entry for this version
-    if ! grep -q "## $NEW_VERSION" RELEASE.md; then
+    # Check RELEASE.md has entry for this version (with v prefix)
+    if ! grep -q "## v$NEW_VERSION" RELEASE.md; then
         echo "❌ Release detected but RELEASE.md missing entry for v$NEW_VERSION"
-        echo "   Add section: ## $NEW_VERSION (YYYY-MM-DD)"
+        echo "   Add section: ## v$NEW_VERSION (YYYY-MM-DD)"
         exit 1
     fi
 
