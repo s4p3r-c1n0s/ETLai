@@ -1,5 +1,51 @@
 # Release History
 
+## v0.3.3 (2026-07-22)
+
+### New features
+
+- **Input role declarations** — Manifests can now declare inputs with explicit roles
+  - New `inputs:` field in manifest.yaml: name, role (transient/reference), description, pattern
+  - Transient inputs go to inbox/ (processed once, moved to processed/)
+  - Reference inputs go to reference/ (permanent lookups, never moved)
+  - AI agents and users can now distinguish file placement from the manifest alone
+
+- **Auto-generated PIPELINE_README.md** — `etlai sync` generates per-pipeline documentation
+  - Shows input table: name, folder, role, pattern, description
+  - Folder layout explanation
+  - Step-by-step workflow instructions
+  - Regenerated on every sync (always current)
+
+- **Input validation during sync** — `etlai sync` validates input declarations
+  - Required fields: name, role, description
+  - Warns if reference files missing from reference/ folder
+  - Reports transient file pattern matches in inbox/
+  - Errors on invalid role values
+
+- **Auto min_files calculation** — When `min_files` not set, calculated from transient input count
+  - Backward compatible: explicit min_files still takes precedence
+  - Prevents misconfiguration (e.g., putting reference files in inbox)
+
+- **Input metadata passed to atoms** — Atoms receive `input_metadata` in params
+  - Allows atoms to identify which reference files to use by role
+  - Enables smarter file resolution in composite pipelines
+
+### Documentation fixes
+
+- Fixed test counts across TESTS.md, RELEASE.md (now 47 tests)
+- Fixed CICD.md contradictions (removed false README version check claim)
+- Added NOT YET IMPLEMENTED warning to GitHub Actions section
+- Updated GitHub Actions versions (v5, v4, v2)
+- Fixed TODO.md misleading checkmarks on unimplemented phases
+- Added all historical versions with correct dates from PyPI
+
+### No breaking changes
+
+- Manifests without `inputs:` continue to work exactly as before
+- All existing atoms, forms, and pipelines unaffected
+
+---
+
 ## v0.3.2 (2026-07-22)
 
 ### Improvements
