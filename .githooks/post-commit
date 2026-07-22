@@ -1,0 +1,26 @@
+#!/bin/bash
+
+# Post-commit hook: Auto-tag release commits
+
+# Get the commit message
+MSG=$(git log -1 --pretty=%B | head -1)
+
+if [[ "$MSG" =~ ^(release:|chore:\ bump\ version) ]]; then
+    # This is a release commit - create tag
+
+    VERSION=$(grep '^version = ' pyproject.toml | cut -d'"' -f2)
+    TAG_NAME="v${VERSION}"
+
+    # Check if tag already exists
+    if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+        echo "⚠️  Tag $TAG_NAME already exists"
+        exit 0
+    fi
+
+    # Create annotated tag
+    git tag -a "$TAG_NAME" -m "Release $TAG_NAME"
+    echo "✅ Created tag: $TAG_NAME"
+    echo "📤 Remember to push tags: git push origin --tags"
+fi
+
+exit 0

@@ -1,0 +1,41 @@
+#!/bin/bash
+
+# Prepare-commit-msg hook: Detect and validate release commits
+
+COMMIT_MSG_FILE=$1
+COMMIT_SOURCE=$2
+
+# Only run for manual commits (not merge/squash/etc)
+if [ -n "$COMMIT_SOURCE" ]; then
+    exit 0
+fi
+
+# Check if this looks like a release commit
+MSG=$(cat "$COMMIT_MSG_FILE" | head -1)
+
+if [[ "$MSG" =~ ^(release:|chore:\ bump\ version) ]]; then
+    # This is a release commit - validate versions match
+
+    NEW_VERSION=$(grep '^version = ' pyproject.toml | cut -d'"' -f2)
+    INIT_VERSION=$(grep '__version__ = ' etlai/__init__.py | cut -d'"' -f2)
+
+    # Check RELEASE.md has entry for this version
+    if ! grep -q "## $NEW_VERSION" RELEASE.md; then
+        echo "❌ Release detected but RELEASE.md missing entry for v$NEW_VERSION"
+        echo "   Add section: ## $NEW_VERSION (YYYY-MM-DD)"
+        exit 1
+    fi
+
+    # Versions must match
+    if [ "$NEW_VERSION" != "$INIT_VERSION" ]; then
+        echo "❌ Version mismatch in release commit:"
+        echo "   pyproject.toml: $NEW_VERSION"
+        echo "   etlai/__init__.py: $INIT_VERSION"
+        echo "   Update etlai/__init__.py to match"
+        exit 1
+    fi
+
+    echo "✅ Release commit validated: v$NEW_VERSION"
+fi
+
+exit 0
