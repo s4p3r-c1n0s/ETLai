@@ -165,14 +165,13 @@ pytest -m "not slow and not integration"
 
 ## Release Process
 
-See [CICD.md](CICD.md) for complete release workflow.
+See [CICD.md](CICD.md) for release workflow and [PUBLISH.md](PUBLISH.md) for building/publishing.
 
 **Quick summary:**
 1. Update version in 3 files: `pyproject.toml`, `etlai/__init__.py`, `RELEASE.md`
 2. Commit: `release: vX.Y.Z - <summary>`
 3. Post-commit hook auto-creates git tag
-4. Build: `python -m build`
-5. Publish: `python -m twine upload dist/*`
+4. Build and publish: See [PUBLISH.md](PUBLISH.md)
 
 ---
 
@@ -180,6 +179,7 @@ See [CICD.md](CICD.md) for complete release workflow.
 
 - **Tests:** See [TESTS.md](TESTS.md)
 - **CI/CD:** See [CICD.md](CICD.md)
+- **Publishing:** See [PUBLISH.md](PUBLISH.md)
 - **Commits:** See [COMMIT_GUIDELINES.md](COMMIT_GUIDELINES.md)
 - **Architecture:** See [ARCHITECTURE.md](ARCHITECTURE.md)
 - **Issues:** Open issue on GitHub

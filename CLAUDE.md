@@ -15,7 +15,8 @@ Guidance for coding agents working in this repository.
 ## Quick Links
 
 - **Tests:** [TESTS.md](TESTS.md) — coverage goals, how to run
-- **CI/CD:** [CICD.md](CICD.md) — Git hooks, release workflow, PyPI publishing
+- **CI/CD:** [CICD.md](CICD.md) — Git hooks, release workflow, tagging
+- **Publishing:** [PUBLISH.md](PUBLISH.md) — Building and publishing to PyPI
 - **Architecture:** [ARCHITECTURE.md](ARCHITECTURE.md) — Internal design, composite pipelines
 
 ## Project overview

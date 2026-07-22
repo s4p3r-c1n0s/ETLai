@@ -250,82 +250,26 @@ git push origin main
 git push origin --tags
 ```
 
-#### 6. Build distribution packages
+#### 6. Build and publish to PyPI
 
+See **[PUBLISH.md](PUBLISH.md)** for complete build and publishing instructions.
+
+**Quick summary:**
 ```bash
-# Clean old builds
+# Clean, build, verify, and publish
 rm -rf dist/ build/ *.egg-info
-
-# Build source distribution and wheel
 python -m build
-
-# Verify build artifacts
-ls -lh dist/
-# Should see:
-# ETLai-0.4.0-py3-none-any.whl
-# ETLai-0.4.0.tar.gz
-```
-
-#### 7. Verify package integrity
-
-```bash
-# Check package contents
-tar -tzf dist/ETLai-0.4.0.tar.gz | head -20
-
-# Install locally to test
-pip install dist/ETLai-0.4.0-py3-none-any.whl
-
-# Run quick smoke test
-etlai --version
-# Should output: 0.4.0
-```
-
-#### 8. Publish to PyPI
-
-**Option A: Using Twine (recommended)**
-
-```bash
-# Check package first (validates metadata)
 python -m twine check dist/*
-
-# Upload to PyPI (will prompt for credentials)
 python -m twine upload dist/*
 
-# Or use token authentication
-python -m twine upload dist/* --username __token__ --password YOUR_PYPI_TOKEN
-```
-
-**Option B: Using PyPI API token (preferred for automation)**
-
-Create `~/.pypirc`:
-```ini
-[pypi]
-username = __token__
-password = pypi-AgEIcHlwaS5vcmc...YOUR_TOKEN_HERE
-```
-
-Then:
-```bash
-python -m twine upload dist/*
-```
-
-#### 9. Verify PyPI publication
-
-```bash
-# Wait 1-2 minutes for PyPI to process
-
-# Check on PyPI web interface
-open https://pypi.org/project/ETLai/
-
-# Test installation from PyPI
+# Verify on PyPI
 pip install --upgrade ETLai==0.4.0
-
-# Verify it works
 etlai --version
-python -c "import etlai; print(etlai.__version__)"
 ```
 
-#### 10. Create GitHub Release (optional)
+For first-time setup, TestPyPI usage, troubleshooting, and credentials configuration, see [PUBLISH.md](PUBLISH.md).
+
+#### 7. Create GitHub Release (optional)
 
 ```bash
 # Using GitHub CLI
@@ -343,7 +287,7 @@ gh release create v0.4.0 \
 # 6. Publish release
 ```
 
-#### 11. Post-release verification
+#### 8. Post-release verification
 
 ```bash
 # Test in a clean environment
@@ -375,7 +319,7 @@ git push origin main
 # 4. Publish a hotfix release (0.4.1)
 ```
 
-**Note:** PyPI does not allow re-uploading the same version. If v0.4.0 has a critical bug, you must release v0.4.1.
+**Note:** PyPI does not allow re-uploading the same version. If v0.4.0 has a critical bug, you must release v0.4.1. See [PUBLISH.md](PUBLISH.md) for troubleshooting.
 
 ## Hook Scripts
 
@@ -503,39 +447,7 @@ jobs:
 
 ## PyPI Credentials Setup
 
-### Creating a PyPI API token
-
-1. Go to https://pypi.org/manage/account/token/
-2. Click "Add API token"
-3. Name: "ETLai Releases"
-4. Scope: "Project: ETLai" (after first upload) or "Entire account" (for first upload)
-5. Copy the token (starts with `pypi-`)
-
-### Storing token securely
-
-**For local releases:**
-
-Create `~/.pypirc`:
-```ini
-[pypi]
-username = __token__
-password = pypi-YOUR_TOKEN_HERE
-```
-
-Set permissions:
-```bash
-chmod 600 ~/.pypirc
-```
-
-**For GitHub Actions:**
-
-1. Go to repository settings → Secrets → Actions
-2. Add secret: `PYPI_TOKEN` = your token
-3. GitHub Actions will use it automatically
-
-**For team releases:**
-
-Use a password manager (1Password, LastPass) to share the token securely. Never commit tokens to git.
+See **[PUBLISH.md](PUBLISH.md)** for complete PyPI credentials setup, token creation, and secure storage instructions.
 
 ## Checklist: Preparing for a Release
 
@@ -550,10 +462,7 @@ Use a password manager (1Password, LastPass) to share the token securely. Never 
 - [ ] Commit with message: `release: vX.Y.Z - <summary>`
 - [ ] Hook creates tag automatically (verify with `git tag`)
 - [ ] Push: `git push origin main --tags`
-- [ ] Build: `python -m build`
-- [ ] Verify package: `python -m twine check dist/*`
-- [ ] Test install locally: `pip install dist/ETLai-X.Y.Z*.whl`
-- [ ] Publish: `python -m twine upload dist/*`
+- [ ] Build and publish: See [PUBLISH.md](PUBLISH.md) for complete steps
 - [ ] Verify on PyPI: `pip install --upgrade ETLai==X.Y.Z`
 - [ ] Create GitHub Release (optional)
 - [ ] Test in clean environment
@@ -573,17 +482,7 @@ tar -tzf dist/ETLai-*.tar.gz | grep etlai/
 
 ### Twine upload fails
 
-```bash
-# "Invalid distribution file" error
-python -m twine check dist/*
-
-# Authentication error
-# Check ~/.pypirc has correct token
-
-# "File already exists" error
-# You cannot re-upload the same version to PyPI
-# Bump version and try again
-```
+See **[PUBLISH.md](PUBLISH.md)** for complete troubleshooting of build and upload errors.
 
 ### Version mismatch errors
 
@@ -631,8 +530,4 @@ The pre-commit hook will catch it and block the commit.
 You can remove files, but the version number is permanently reserved. Publish a new version instead.
 
 **Should I publish to TestPyPI first?**  
-For major releases, yes:
-```bash
-python -m twine upload --repository testpypi dist/*
-pip install --index-url https://test.pypi.org/simple/ ETLai==0.4.0
-```
+For major releases, yes. See [PUBLISH.md](PUBLISH.md) for TestPyPI usage.

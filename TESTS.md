@@ -212,11 +212,9 @@ When adding a new atom, form, or helper:
 
 ## Continuous Integration
 
-Tests run automatically via git hooks before every commit. See **[CICD.md](CICD.md)** for:
-- Pre-commit hook setup (runs pytest before commits)
-- Documentation consistency checks
-- Release workflow and PyPI publishing
-- GitHub Actions workflows (future)
+Tests run automatically via git hooks before every commit. See:
+- **[CICD.md](CICD.md)** — Pre-commit hooks, release workflow, git tagging
+- **[PUBLISH.md](PUBLISH.md)** — Building and publishing to PyPI
 
 **Quick setup:**
 ```bash
