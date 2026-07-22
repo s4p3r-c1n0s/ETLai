@@ -122,6 +122,105 @@ def _resolve_form(form_name: str, project_root: Path):
     return importlib.import_module(f"etlai.forms.{form_name}")
 
 
+def _execute_step(
+    atom_module,
+    form_module,
+    folders: PipelineFolders,
+    pipeline_name: str,
+    step_index: int,
+    file_paths: list[str],
+    is_first: bool,
+    is_last: bool,
+    prev_output: str | None = None,
+    context=None,
+):
+    """Shared logic for configuring and executing a single step (used by single and composite jobs).
+
+    Returns the target_path (output location) for this step.
+    """
+    # Load full config (we'll update a step section)
+    existing = load_config(folders)
+    step_config_key = f"step_{step_index}" if step_index > 0 else None
+
+    # For single-job pipelines, use the flat config. For composites, use step_N key.
+    if is_first and step_index == 0:
+        step_existing = existing
+        step_config_key = None
+    else:
+        step_existing = existing.get(f"step_{step_index}") if existing else None
+
+    reconfigure = bool(context.op_config.get("reconfigure")) if context else False
+    if reconfigure:
+        step_existing = None
+
+    # Call form to get/update config
+    try:
+        if is_first:
+            form_input = file_paths
+        else:
+            form_input = [prev_output]
+
+        config = form_module.configure(form_input, step_existing)
+    except Exception as e:
+        folders.move_to_rejected(file_paths, f"Step {step_index} config cancelled: {e}")
+        notify(title=f"{pipeline_name} — Failed", message=str(e)[:200])
+        raise
+
+    # Save updated config
+    if step_config_key:
+        full_config = existing or {}
+        full_config[step_config_key] = config
+        save_config(folders, full_config)
+    else:
+        save_config(folders, config)
+
+    # Inject file paths or previous output
+    if is_first:
+        if file_paths and "left_file" not in config and "input_file" not in config and "input_files" not in config:
+            if len(file_paths) >= 2:
+                config["left_file"] = file_paths[0]
+                config["right_file"] = file_paths[1]
+            else:
+                config["input_file"] = file_paths[0]
+    else:
+        if "input_file" not in config:
+            config["input_file"] = prev_output
+
+    # Inject reference files
+    ref_files = folders.list_reference_files()
+    if ref_files:
+        config["reference_files"] = ref_files
+
+    # Determine target path
+    if is_last:
+        target_path = folders.output_path("output.csv")
+    else:
+        target_path = folders.output_path(f"_intermediate_{step_index}.csv")
+    config["target_path"] = target_path
+
+    # Execute atom
+    result = json.loads(atom_module.execute(json.dumps(config)))
+
+    if result["success"]:
+        if context:
+            context.log.info(f"Step {step_index}: {result['message']}")
+
+        # On last step, move files and notify
+        if is_last:
+            folders.move_to_processed(file_paths)
+            notify(
+                title=f"{pipeline_name} — Success",
+                message=result["message"][:200],
+                open_folder=folders.output,
+            )
+    else:
+        folders.move_to_rejected(file_paths, f"Step {step_index} failed: {result['message']}")
+        notify(title=f"{pipeline_name} — Failed", message=result["message"][:200])
+        raise RuntimeError(result["message"])
+
+    return target_path
+
+
 def _build_single_job(manifest: dict, project_root: Path):
     """Build a Dagster job for a single-atom pipeline from its manifest."""
     pipeline_name = manifest["name"]
@@ -133,14 +232,16 @@ def _build_single_job(manifest: dict, project_root: Path):
     form_module = _resolve_form(form_name, project_root)
     folders = PipelineFolders(pipeline_name)
 
-    load_op_name = f"{pipeline_name}__load_files"
-    configure_op_name = f"{pipeline_name}__configure"
-    execute_op_name = f"{pipeline_name}__execute"
-
     min_files = manifest.get("min_files", 1)
 
-    @op(name=load_op_name, out={"file_paths": Out()})
+    @op(name=f"{pipeline_name}__load_files", out={"file_paths": Out()})
     def _load_files(context: OpExecutionContext) -> list[str]:
+        if env_file:
+            try:
+                load_env_file(env_file)
+            except FileNotFoundError as e:
+                raise RuntimeError(f"Env file missing for {pipeline_name}: {e}")
+
         import re
         config_paths = context.op_config.get("file_paths") if context.op_config else None
         if config_paths:
@@ -153,65 +254,24 @@ def _build_single_job(manifest: dict, project_root: Path):
             raise RuntimeError(f"No files found in {folders.inbox}")
         return paths
 
-    @op(name=configure_op_name, ins={"file_paths": In(list)}, out={"params": Out()})
-    def _configure(context: OpExecutionContext, file_paths: list[str]) -> dict:
-        existing = load_config(folders)
-        reconfigure = bool(context.op_config.get("reconfigure")) if context.op_config else False
-        if reconfigure:
-            existing = None
-        try:
-            config = form_module.configure(file_paths, existing)
-        except Exception as e:
-            folders.move_to_rejected(file_paths, f"Configuration cancelled: {e}")
-            notify(title=f"{pipeline_name} — Failed", message=str(e)[:200])
-            raise
-        save_config(folders, config)
-        return config
-
-    @op(name=execute_op_name, ins={"file_paths": In(list), "params": In(dict)})
-    def _execute(context: OpExecutionContext, file_paths: list[str], params: dict) -> None:
-        # Load env vars if pipeline has an env_file
-        if env_file:
-            try:
-                load_env_file(env_file)
-            except FileNotFoundError as e:
-                folders.move_to_rejected(file_paths, f"Env file missing: {e}")
-                raise
-
-        if "target_path" not in params:
-            params["target_path"] = folders.output_path("output.csv")
-        target_path = params["target_path"]
-
-        # Inject file paths for atoms that need them
-        if file_paths and "left_file" not in params and "input_file" not in params and "input_files" not in params:
-            if len(file_paths) >= 2:
-                params["left_file"] = file_paths[0]
-                params["right_file"] = file_paths[1]
-            else:
-                params["input_file"] = file_paths[0]
-
-        # Inject reference file paths
-        ref_files = folders.list_reference_files()
-        if ref_files:
-            params["reference_files"] = ref_files
-
-        result = json.loads(atom_module.execute(json.dumps(params)))
-
-        if result["success"]:
-            context.log.info(result["message"])
-            folders.move_to_processed(file_paths)
-            notify(title=f"{pipeline_name} — Success", message=result["message"][:200],
-                   open_folder=os.path.dirname(os.path.abspath(target_path)))
-        else:
-            folders.move_to_rejected(file_paths, result["message"])
-            notify(title=f"{pipeline_name} — Failed", message=result["message"][:200])
-            raise RuntimeError(f"{pipeline_name} failed: {result['message']}")
+    @op(name=f"{pipeline_name}__execute", ins={"file_paths": In(list)})
+    def _execute(context: OpExecutionContext, file_paths: list[str]) -> None:
+        _execute_step(
+            atom_module=atom_module,
+            form_module=form_module,
+            folders=folders,
+            pipeline_name=pipeline_name,
+            step_index=0,
+            file_paths=file_paths,
+            is_first=True,
+            is_last=True,
+            context=context,
+        )
 
     @job(name=pipeline_name)
     def _job():
         file_paths = _load_files()
-        params = _configure(file_paths)
-        _execute(file_paths, params)
+        _execute(file_paths)
 
     return _job
 
@@ -228,7 +288,6 @@ def _build_composite_job(manifest: dict, project_root: Path):
 
     @op(name=load_op_name, out={"file_paths": Out()})
     def _load_files(context: OpExecutionContext) -> list[str]:
-        # Load env vars for the entire composite job
         if env_file:
             try:
                 load_env_file(env_file)
@@ -250,112 +309,44 @@ def _build_composite_job(manifest: dict, project_root: Path):
     for i, step in enumerate(steps):
         atom_module = _resolve_atom(step["atom"], project_root)
         form_module = _resolve_form(step.get("form", "passthrough"), project_root)
-        step_name = f"{pipeline_name}__step_{i}_{step['atom']}"
+        step_op_name = f"{pipeline_name}__step_{i}_{step['atom']}"
+        is_first = (i == 0)
         is_last = (i == len(steps) - 1)
 
-        def _make_step_op(atom_mod, form_mod, op_name, step_index, last):
-            if step_index == 0:
+        def _make_step_op(atom_mod, form_mod, op_name, step_index, first, last):
+            if first:
                 @op(name=op_name, ins={"file_paths": In(list)}, out={"output_path": Out()})
                 def _step(context: OpExecutionContext, file_paths: list[str]) -> str:
-                    existing = load_config(folders)
-                    step_config_key = f"step_{step_index}"
-                    step_existing = existing.get(step_config_key) if existing else None
-                    reconfigure = bool(context.op_config.get("reconfigure")) if context.op_config else False
-                    if reconfigure:
-                        step_existing = None
-
-                    try:
-                        config = form_mod.configure(file_paths, step_existing)
-                    except Exception as e:
-                        folders.move_to_rejected(file_paths, f"Step {step_index} config cancelled: {e}")
-                        notify(title=f"{pipeline_name} — Failed", message=str(e)[:200])
-                        raise
-
-                    full_config = existing or {}
-                    full_config[step_config_key] = config
-                    save_config(folders, full_config)
-
-                    if "left_file" not in config and "input_file" not in config and "input_files" not in config:
-                        if len(file_paths) >= 2:
-                            config["left_file"] = file_paths[0]
-                            config["right_file"] = file_paths[1]
-                        else:
-                            config["input_file"] = file_paths[0]
-
-                    # Inject reference files
-                    ref_files = folders.list_reference_files()
-                    if ref_files:
-                        config["reference_files"] = ref_files
-
-                    if last:
-                        config["target_path"] = folders.output_path("output.csv")
-                    else:
-                        config["target_path"] = folders.output_path(f"_intermediate_{step_index}.csv")
-
-                    result = json.loads(atom_mod.execute(json.dumps(config)))
-                    if not result["success"]:
-                        folders.move_to_rejected(file_paths, f"Step {step_index} failed: {result['message']}")
-                        notify(title=f"{pipeline_name} — Failed", message=result["message"][:200])
-                        raise RuntimeError(result["message"])
-
-                    context.log.info(f"Step {step_index}: {result['message']}")
-
-                    if last:
-                        folders.move_to_processed(file_paths)
-                        notify(title=f"{pipeline_name} — Success", message=result["message"][:200], open_folder=folders.output)
-
-                    return config["target_path"]
+                    return _execute_step(
+                        atom_module=atom_mod,
+                        form_module=form_mod,
+                        folders=folders,
+                        pipeline_name=pipeline_name,
+                        step_index=step_index,
+                        file_paths=file_paths,
+                        is_first=True,
+                        is_last=last,
+                        context=context,
+                    )
             else:
                 @op(name=op_name, ins={"file_paths": In(list), "prev_output": In(str)}, out={"output_path": Out()})
                 def _step(context: OpExecutionContext, file_paths: list[str], prev_output: str) -> str:
-                    existing = load_config(folders)
-                    step_config_key = f"step_{step_index}"
-                    step_existing = existing.get(step_config_key) if existing else None
-                    reconfigure = bool(context.op_config.get("reconfigure")) if context.op_config else False
-                    if reconfigure:
-                        step_existing = None
-
-                    try:
-                        config = form_mod.configure([prev_output], step_existing)
-                    except Exception as e:
-                        folders.move_to_rejected(file_paths, f"Step {step_index} config cancelled: {e}")
-                        notify(title=f"{pipeline_name} — Failed", message=str(e)[:200])
-                        raise
-
-                    full_config = existing or {}
-                    full_config[step_config_key] = config
-                    save_config(folders, full_config)
-
-                    if "input_file" not in config:
-                        config["input_file"] = prev_output
-
-                    # Inject reference files
-                    ref_files = folders.list_reference_files()
-                    if ref_files:
-                        config["reference_files"] = ref_files
-
-                    if last:
-                        config["target_path"] = folders.output_path("output.csv")
-                    else:
-                        config["target_path"] = folders.output_path(f"_intermediate_{step_index}.csv")
-
-                    result = json.loads(atom_mod.execute(json.dumps(config)))
-                    if not result["success"]:
-                        folders.move_to_rejected(file_paths, f"Step {step_index} failed: {result['message']}")
-                        notify(title=f"{pipeline_name} — Failed", message=result["message"][:200])
-                        raise RuntimeError(result["message"])
-
-                    context.log.info(f"Step {step_index}: {result['message']}")
-
-                    if last:
-                        folders.move_to_processed(file_paths)
-                        notify(title=f"{pipeline_name} — Success", message=result["message"][:200], open_folder=folders.output)
-
-                    return config["target_path"]
+                    return _execute_step(
+                        atom_module=atom_mod,
+                        form_module=form_mod,
+                        folders=folders,
+                        pipeline_name=pipeline_name,
+                        step_index=step_index,
+                        file_paths=file_paths,
+                        is_first=False,
+                        is_last=last,
+                        prev_output=prev_output,
+                        context=context,
+                    )
 
             return _step
 
-        step_ops.append(_make_step_op(atom_module, form_module, step_name, i, is_last))
+        step_ops.append(_make_step_op(atom_module, form_module, step_op_name, i, is_first, is_last))
 
     @job(name=pipeline_name)
     def _composite_job():
