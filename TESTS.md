@@ -249,21 +249,38 @@ jobs:
 
 | Component | Tests | Coverage | Status |
 |-----------|-------|----------|--------|
-| Atoms | ⬜ | 0% | TODO |
-| Forms | ⬜ | 0% | TODO |
-| Registry | ⬜ | 0% | TODO |
-| Helpers | ⬜ | 0% | TODO |
-| Sensors | ⬜ | 0% | TODO |
+| Atoms | ✅ 11+ tests | TBD | ✅ Done (vlookup, groupby, mock_generate, api_fetch) |
+| Forms | ✅ 4 tests | TBD | ✅ Done (passthrough) |
+| Registry | ✅ 9+ tests | TBD | ✅ Done (manifest loading, resolution, triggers) |
+| Helpers | ✅ 12+ tests | TBD | ✅ Done (config_store, env_loader, folders) |
+| Sensors | ⬜ | 0% | TODO (covered partially in registry tests) |
 | CLI | ⬜ | 0% | TODO |
+
+**Total: ~36 tests created**
+
+Run `pip install -e ".[dev]"` then `pytest --cov=etlai` to get actual coverage numbers.
 
 ---
 
-## Phase 1: Basic atom tests (start here)
+## Next steps
 
-Create `tests/test_atoms.py` with tests for:
-1. vlookup - basic join, missing columns, file not found
-2. groupby - basic group, invalid column
-3. mock_generate - basic generation, empty input
-4. api_fetch - basic fetch (mock HTTP), missing env var
+### Phase 2: CLI tests
+Create `tests/test_cli.py` with tests for:
+1. `etlai init` - scaffold creation, force overwrite
+2. `etlai sync` - manifest validation, folder creation
+3. `etlai list` - pipeline listing
+4. `etlai run` - (integration test, optional)
 
-Then expand to other components.
+### Phase 3: Integration tests
+Create `tests/test_integration.py` with end-to-end tests:
+1. Full pipeline execution (file drop → sensor → job → output)
+2. Composite pipeline execution
+3. API pipeline with schedule trigger
+
+Mark with `@pytest.mark.integration` for optional execution.
+
+### Phase 4: Increase coverage
+- Add more edge cases to existing tests
+- Test error handling paths
+- Test with unicode/special characters
+- Test with large files (mark as `@pytest.mark.slow`)
