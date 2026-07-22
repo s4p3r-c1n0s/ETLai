@@ -4,7 +4,7 @@
 
 ### Improvements
 
-- **Testing infrastructure** — Comprehensive pytest suite with 36+ tests
+- **Testing infrastructure** — Comprehensive pytest suite with 40 tests
   - `tests/test_atoms.py`: vlookup, groupby, mock_generate, api_fetch contract validation
   - `tests/test_forms.py`: passthrough form behavior
   - `tests/test_helpers.py`: config_store, env_loader, PipelineFolders file operations
@@ -34,60 +34,105 @@
 
 ---
 
-## v0.3.0 (unreleased)
+## v0.3.1 (2026-07-21)
+
+### Documentation
+
+- **ARCHITECTURE.md** — Internal design documentation added
+  - System overview diagram and core contracts
+  - Data flow diagrams (file-based, API-based, composite pipelines)
+  - Design decisions and security boundaries
+
+### Status
+
+- Internal release for design review and documentation
+- Features from v0.3.0 included in this release
+- Documentation cleanup and formatting
+
+---
+
+## v0.3.0 (2026-07-21)
+
+### Major restructure
+
+- **Package restructure** — All code now in `etlai/` pip-installable package
+  - CLI: `etlai init`, `etlai sync`, `etlai run`, `etlai list` commands
+  - Registry-driven: scans `pipelines/*/manifest.yaml` at startup
+  - Dynamic Dagster job + sensor creation from manifests
+  - Atom resolution: user `atoms/` → `etlai.atoms.<name>` (package)
+  - Form resolution: user `forms/` → `etlai.forms.<name>` (package)
+  - Scaffold templates with CLAUDE.md for AI-assisted pipeline creation
 
 ### New features
 
-- **API pipeline support** — Pipelines can now ingest data from REST APIs
-  - Shipped `api_fetch` atom: generic HTTP fetcher (JSON/XML/CSV response parsing, field mapping, `${ENV_VAR}` resolution in headers and params)
+- **API pipeline support** — REST API data ingestion on schedules
+  - Shipped `api_fetch` atom: generic HTTP fetcher (JSON/XML/CSV, field mapping, `${ENV_VAR}` resolution)
   - `env_file` + `requires_env` in manifests for credential management
-  - `etlai sync` validates env files contain required variables
-  - Framework loads env file into `os.environ` before atom execution
-  - Example pipeline: `newsdata_fetch` (technology news from newsdata.io)
-
-- **Trigger abstraction** — Pipelines declare how they're triggered
-  - `inbox_files`: hot folder sensor (default, existing behavior)
-  - `schedule`: cron-based via Dagster ScheduleDefinition
-  - Multiple rules can coexist (e.g. both file sensor AND cron)
+  - `etlai sync` validates required env vars exist
+  - Framework loads env file into `os.environ` before execution
   - `min_files: 0` for API-only pipelines with no inbox
 
-- **Reference folder** — Permanent data available to atoms across runs
-  - `reference/` directory created per pipeline
+- **Trigger abstraction** — Pipelines declare HOW they're triggered
+  - `inbox_files`: hot folder sensor (default, existing behavior)
+  - `schedule`: cron-based via Dagster ScheduleDefinition
+  - Multiple rules can coexist (file sensor AND cron simultaneously)
+
+- **Reference folder** — Permanent data across runs
+  - `reference/` directory per pipeline
   - Framework passes `reference_files: [paths]` to atoms automatically
   - Use for: lookup tables, previous API snapshots, historical comparisons
 
 - **`path: ask`** — Custom data folder locations per pipeline
-  - Manifest can set `path: ask` to prompt user during `etlai sync`
-  - Tkinter folder picker opens, chosen path written back to manifest
-  - Each pipeline can store data anywhere independent of the project
+  - Manifest `path: ask` triggers folder picker during `etlai sync`
+  - Tkinter folder picker, chosen path written back to manifest
+  - Each pipeline can store data anywhere independent of project
 
-- **Config separation** — `config.json` stays in project directory
-  - Even when `path` points elsewhere for data folders
-  - Keeps business logic accessible to Claude Code
+### Shipped atoms
 
-### Breaking changes
+- `vlookup` — Left join two CSVs on specified columns with dtype validation
+- `groupby` — Group by column with count, sorted descending
+- `mock_generate` — Generate synthetic data from file headers using Faker
+- `api_fetch` — Generic REST API fetcher with auth and response parsing
 
-- Package restructured into `etlai/` namespace (was flat top-level modules)
-- Old `logic/`, `runners/`, `sensors/`, `helpers/`, `pipeline.py`, `definitions.py` are legacy
-- User projects now use `definitions.py` as a 3-line loader calling `etlai.registry.build_definitions()`
+### Shipped forms
+
+- `vlookup_column_picker` — Tkinter join + output column multi-select
+- `groupby_picker` — Tkinter single column selection
+- `passthrough` — No UI, reads pre-written config.json
 
 ### Dependencies added
 
 - `pyyaml>=6.0` (manifest parsing)
 - `requests>=2.28` (available for custom API atoms)
 
+### Breaking changes
+
+- Package restructured: old `logic/`, `runners/`, `sensors/`, `pipeline.py`, `definitions.py` are legacy
+- User projects now use `definitions.py` as 3-line loader: `from etlai.registry import build_definitions; defs = build_definitions()`
+
 ---
 
-## v0.2.2
+## v0.2.2 (2026-07-19)
+
+### Fixed
 
 - Config.json always stored in project directory, not data directory
 
-## v0.2.1
+---
+
+## v0.2.1 (2026-07-19)
+
+### Features
 
 - Passthrough form reads config.json (no-UI pipeline support)
+
+### Documentation
+
 - Documentation updates
 
-## v0.2.0
+---
+
+## v0.2.0 (2026-07-19)
 
 ### Major restructure
 
@@ -100,24 +145,31 @@
 - Scaffold templates with CLAUDE.md for AI-assisted pipeline creation
 
 ### Shipped atoms
+
 - `vlookup` — left join two CSVs
 - `groupby` — group by column with count
 - `mock_generate` — Faker-based synthetic data
 
 ### Shipped forms
+
 - `vlookup_column_picker` — Tkinter join/output column selection
 - `groupby_picker` — Tkinter single column selection
 - `passthrough` — no UI, reads config.json
 
 ---
 
-## v0.1.1
+## v0.1.1 (2026-07-19)
+
+### Fixed
 
 - Added `logic/atoms/mock_generate.py` (was missing, caused import error)
 
-## v0.1.0
+---
 
-- Initial release
+## v0.1.0 (2026-07-19)
+
+### Initial release
+
 - Flat module structure (pre-package)
 - Static `definitions.py` with hardcoded jobs and sensors
 - Hot folder sensors with file stability check and sweeper

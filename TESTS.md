@@ -231,13 +231,13 @@ chmod +x .githooks/*
 
 | Component | Tests | Goal | Status |
 |-----------|-------|------|--------|
-| Atoms | ✅ 11+ tests | 90%+ | ✅ Done (vlookup, groupby, mock_generate, api_fetch) |
+| Atoms | ✅ 11 tests | 90%+ | ✅ Done (vlookup, groupby, mock_generate, api_fetch) |
 | Forms | ✅ 4 tests | 70%+ | ✅ Done (passthrough) |
-| Registry | ✅ 9+ tests | 85%+ | ✅ Done (manifest loading, resolution, triggers) |
-| Helpers | ✅ 12+ tests | 90%+ | ✅ Done (config_store, env_loader, folders) |
+| Registry | ✅ 12 tests | 85%+ | ✅ Done (manifest loading, resolution, triggers) |
+| Helpers | ✅ 13 tests | 90%+ | ✅ Done (config_store, env_loader, folders) |
 | Sensors | ⬜ | 80%+ | TODO (covered partially in registry tests) |
 | CLI | ⬜ | 60%+ | TODO |
-| **Overall** | **34 tests** | **80%+** | **✅ Base coverage complete** |
+| **Overall** | **40 tests** | **80%+** | **✅ Base coverage complete** |
 
 Check actual coverage: `pip install -e ".[dev]"` then `pytest --cov=etlai --cov-report=html`
 
@@ -261,4 +261,4 @@ All 34 tests passing. Pre-commit hook validates tests before each commit.
 - Error paths: missing files, invalid config, bad manifest
 - Performance: mark slow tests with `@pytest.mark.slow`
 
-Start Phase 2 when needed. Don't rush — current 36 tests provide solid foundation.
+Start Phase 2 when needed. Don't rush — current 40 tests provide solid foundation.

@@ -148,6 +148,9 @@ The post-commit hook automatically creates git tags for releases.
 
 **If you added AI attribution by mistake:**
 ```bash
+# Install git-filter-repo if not already installed
+pip install git-filter-repo
+
 # Remove Co-Authored-By lines from all commits
 git filter-repo --message-callback 'return re.sub(rb"^Co-Authored-By:.*\n?", b"", message, flags=re.MULTILINE)'
 ```

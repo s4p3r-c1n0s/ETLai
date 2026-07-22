@@ -87,7 +87,7 @@ pytest tests/test_atoms.py::TestVlookup::test_basic_join
 pytest -m "not slow and not integration"
 ```
 
-### Coverage requirements
+### Coverage targets (not enforced by hooks)
 
 - **Overall:** 80%+
 - **Atoms:** 90%+ (pure functions, easy to test)
@@ -95,7 +95,7 @@ pytest -m "not slow and not integration"
 - **Registry:** 85%+ (critical path)
 - **Helpers:** 90%+ (utility functions)
 
-Run `pytest --cov=etlai` to check current coverage.
+**Note:** These are aspirational targets. The pre-commit hook runs `pytest` but does NOT enforce coverage thresholds. Use `pytest --cov=etlai` locally to track progress toward these goals.
 
 ---
 
@@ -151,7 +151,7 @@ Run `pytest --cov=etlai` to check current coverage.
 
 ## Test plan
 - [ ] Added tests in tests/test_*.py
-- [ ] All 34 existing tests pass
+- [ ] All existing tests pass
 - [ ] Manually tested: <describe steps>
 
 ## Checklist

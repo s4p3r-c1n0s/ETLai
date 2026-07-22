@@ -1,5 +1,9 @@
 # TODO
 
+**Priority:** Low (design exploration only)
+**Status:** Not started
+**Blocked by:** Nothing. Can start when needed.
+
 ## 1. Decouple Dagster dependencies
 
 **Goal:** Abstract orchestration primitives behind interfaces so Dagster can be swapped with Airflow, Prefect, Temporal, or custom runners.
@@ -296,13 +300,15 @@ def cmd_run():
 
 ### Implementation order
 
-1. ✅ **Phase 1** (foundation): Create interfaces module
-2. ✅ **Phase 2** (extract): Refactor `_execute_step` to remove OpExecutionContext dependency (use generic context)
-3. ✅ **Phase 3** (wrap): Implement DagsterAdapter wrapping existing Dagster primitives
-4. ✅ **Phase 4** (migrate): Refactor registry.py to use adapter instead of direct Dagster imports
-5. ✅ **Phase 5** (CLI): Update cli.py to use runner interface
-6. ✅ **Phase 6** (test): Verify existing Dagster workflows still work
+1. ⬜ **Phase 1** (foundation): Create interfaces module
+2. ⬜ **Phase 2** (extract): Refactor `_execute_step` to remove OpExecutionContext dependency (use generic context)
+3. ⬜ **Phase 3** (wrap): Implement DagsterAdapter wrapping existing Dagster primitives
+4. ⬜ **Phase 4** (migrate): Refactor registry.py to use adapter instead of direct Dagster imports
+5. ⬜ **Phase 5** (CLI): Update cli.py to use runner interface
+6. ⬜ **Phase 6** (test): Verify existing Dagster workflows still work
 7. ⬜ **Phase 7** (alternative): Implement AirflowAdapter or PrefectAdapter as proof of portability
+
+**Status:** Design complete. Implementation not started. No `etlai/orchestration/` directory exists yet.
 
 ### Benefits
 

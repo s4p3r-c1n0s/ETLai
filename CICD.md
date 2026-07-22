@@ -73,7 +73,6 @@ When the hook detects a release commit, it verifies:
 - ✅ Version in `pyproject.toml` matches new RELEASE.md entry
 - ✅ Version in `etlai/__init__.py` matches pyproject.toml
 - ✅ RELEASE.md has a new section for this version
-- ✅ README.md mentions the new version (if user-facing)
 
 If any check fails, the commit is **blocked** with an actionable error message.
 
@@ -405,7 +404,9 @@ git config core.hooksPath ""
 git config core.hooksPath .githooks
 ```
 
-## CI/CD Pipeline (GitHub Actions - Future)
+## CI/CD Pipeline (GitHub Actions - Future) ⚠️ NOT YET IMPLEMENTED
+
+**⚠️ WARNING: These workflows do not exist yet. The YAML below is reference for future implementation. Do not expect to find `.github/workflows/` in the repository.**
 
 Once the project is public or has collaborators, add GitHub Actions workflows:
 
@@ -425,10 +426,10 @@ jobs:
         python-version: ['3.10', '3.11', '3.12']
     
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       
       - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
       
@@ -441,7 +442,7 @@ jobs:
         run: pytest --cov=etlai --cov-report=xml --cov-report=term
       
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v3
+        uses: codecov/codecov-action@v4
         with:
           file: ./coverage.xml
           fail_ci_if_error: false
@@ -492,7 +493,7 @@ jobs:
         run: twine upload dist/*
       
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: dist/*
           body_path: RELEASE.md
