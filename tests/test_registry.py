@@ -202,6 +202,129 @@ class TestExecuteStep:
         )
         assert result is not None
 
+    def test_execute_step_injects_reference_via_inject_as(self, tmp_path, monkeypatch):
+        """inject_as in input_metadata resolves reference file path into config param."""
+        from unittest.mock import MagicMock
+        from etlai.registry import _execute_step
+        from etlai.helpers.folders import PipelineFolders
+
+        monkeypatch.chdir(tmp_path)
+
+        pipeline_dir = tmp_path / "pipelines" / "test_pipe"
+        for d in ["inbox", "staging", "processed", "rejected", "output", "reference"]:
+            (pipeline_dir / d).mkdir(parents=True)
+
+        # Create reference file
+        ref_file = pipeline_dir / "reference" / "catalog.csv"
+        ref_file.write_text("sku,name\nA,Widget\n")
+
+        # Create inbox file
+        input_csv = pipeline_dir / "inbox" / "sales.csv"
+        input_csv.write_text("sku,qty\nA,5\n")
+
+        # Atom captures the config it receives
+        received_config = {}
+
+        def mock_execute(params_json):
+            import json
+            received_config.update(json.loads(params_json))
+            return '{"success": true, "message": "done"}'
+
+        atom_mod = MagicMock()
+        atom_mod.execute.side_effect = mock_execute
+
+        form_mod = MagicMock()
+        form_mod.configure.return_value = {"left_column": "sku", "right_column": "sku"}
+
+        folders = PipelineFolders("test_pipe")
+
+        input_metadata = [
+            {"name": "sales", "role": "transient", "description": "Sales data"},
+            {
+                "name": "catalog",
+                "role": "reference",
+                "description": "Product catalog",
+                "pattern": "catalog.csv",
+                "inject_as": {"step": 0, "param": "right_file"},
+            },
+        ]
+
+        _execute_step(
+            atom_module=atom_mod,
+            form_module=form_mod,
+            folders=folders,
+            pipeline_name="test_pipe",
+            step_index=0,
+            file_paths=[str(input_csv)],
+            is_first=True,
+            is_last=True,
+            context=None,
+            input_metadata=input_metadata,
+        )
+
+        # The reference file should be injected as "right_file"
+        assert "right_file" in received_config
+        assert received_config["right_file"].endswith("catalog.csv")
+
+    def test_execute_step_inject_as_skips_wrong_step(self, tmp_path, monkeypatch):
+        """inject_as targeting step 1 should not inject into step 0."""
+        from unittest.mock import MagicMock
+        from etlai.registry import _execute_step
+        from etlai.helpers.folders import PipelineFolders
+
+        monkeypatch.chdir(tmp_path)
+
+        pipeline_dir = tmp_path / "pipelines" / "test_pipe"
+        for d in ["inbox", "staging", "processed", "rejected", "output", "reference"]:
+            (pipeline_dir / d).mkdir(parents=True)
+
+        ref_file = pipeline_dir / "reference" / "supplier.csv"
+        ref_file.write_text("sku,cost\nA,10\n")
+
+        input_csv = pipeline_dir / "inbox" / "data.csv"
+        input_csv.write_text("sku,qty\nA,5\n")
+
+        received_config = {}
+
+        def mock_execute(params_json):
+            import json
+            received_config.update(json.loads(params_json))
+            return '{"success": true, "message": "done"}'
+
+        atom_mod = MagicMock()
+        atom_mod.execute.side_effect = mock_execute
+
+        form_mod = MagicMock()
+        form_mod.configure.return_value = {"left_column": "sku"}
+
+        folders = PipelineFolders("test_pipe")
+
+        input_metadata = [
+            {
+                "name": "supplier",
+                "role": "reference",
+                "description": "Supplier prices",
+                "pattern": "supplier.csv",
+                "inject_as": {"step": 1, "param": "right_file"},
+            },
+        ]
+
+        _execute_step(
+            atom_module=atom_mod,
+            form_module=form_mod,
+            folders=folders,
+            pipeline_name="test_pipe",
+            step_index=0,
+            file_paths=[str(input_csv)],
+            is_first=True,
+            is_last=True,
+            context=None,
+            input_metadata=input_metadata,
+        )
+
+        # right_file should NOT be injected (targets step 1, we're in step 0)
+        assert "right_file" not in received_config
+
 
 class TestTriggerBuilding:
     """Tests for trigger building."""

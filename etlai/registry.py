@@ -249,9 +249,23 @@ def _execute_step(
     if ref_files:
         config["reference_files"] = ref_files
 
-    # Inject input metadata if available from manifest
+    # Resolve inject_as declarations: inject reference file paths into step config params
     if input_metadata:
-        config["input_metadata"] = input_metadata
+        for inp in input_metadata:
+            inject_as = inp.get("inject_as")
+            if not inject_as or inp.get("role") != "reference":
+                continue
+            target_step = inject_as.get("step")
+            param_name = inject_as.get("param")
+            if target_step != step_index or not param_name:
+                continue
+            # Find matching reference file by pattern or name
+            pattern = inp.get("pattern")
+            if pattern and ref_files:
+                import fnmatch
+                matched = [f for f in ref_files if fnmatch.fnmatch(Path(f).name, pattern)]
+                if matched:
+                    config[param_name] = matched[0]
 
     # Determine target path
     if is_last:

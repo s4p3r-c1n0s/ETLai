@@ -128,7 +128,7 @@ Example:
 ```
 release: v0.3.2 - testing and registry improvements
 
-- 34 tests covering atoms, forms, helpers, registry
+- Tests covering atoms, forms, helpers, registry
 - Extracted shared _execute_step function
 - Fixed prepare-commit-msg v prefix bug
 - Added git hooks for automated test validation

@@ -23,7 +23,7 @@ pip install -e ".[dev]"
 ```
 
 This enables:
-- Pre-commit tests (all 34 tests must pass)
+- Pre-commit tests (all tests must pass)
 - Documentation consistency checks
 - Automatic git tagging for releases
 

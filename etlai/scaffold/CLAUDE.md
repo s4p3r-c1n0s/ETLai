@@ -3,6 +3,57 @@
 This is an ETLai project. It uses a local Dagster instance to run CSV transformation
 pipelines triggered by hot folder sensors.
 
+## ⚠️ CRITICAL: Atom Privacy Boundary
+
+Atoms are **generic reusable functions**. They must NEVER contain:
+- Real column names (`df["product_sku"]`, `df["customer_email"]`)
+- Real file names (`catalog.csv`, `orders_2024.csv`)
+- Domain knowledge (what the data means, business rules)
+
+All business logic lives in `config.json` — the framework passes it as params at runtime.
+
+### ❌ WRONG — atom knows the domain:
+```python
+def execute(params_json: str) -> str:
+    df = pd.read_csv(params["input_file"])
+    catalog = pd.read_csv("reference/product_catalog.csv")  # hardcoded!
+    result = df.merge(catalog, left_on="sku", right_on="product_id")  # hardcoded columns!
+```
+
+### ✅ CORRECT — atom is generic, config supplies specifics:
+```python
+def execute(params_json: str) -> str:
+    params = json.loads(params_json)
+    df = pd.read_csv(params["left_file"])
+    right = pd.read_csv(params["right_file"])  # injected by framework via inject_as
+    result = df.merge(right, left_on=params["left_column"], right_on=params["right_column"])
+```
+
+### How business logic reaches the atom
+
+1. **config.json** (written by local LLM or form UI) supplies column names, thresholds, options
+2. **`inject_as`** in manifest injects reference file paths into atom params at runtime
+3. The atom receives everything via `params_json` — it never reaches for files or knows field names
+
+### `inject_as` in manifests
+
+Declares that a reference file should be injected as a specific param to a specific step:
+```yaml
+inputs:
+  - name: product_catalog
+    role: reference
+    description: "SKU lookup table"
+    pattern: "product_catalog.csv"
+    inject_as:
+      step: 0          # which step receives this file (0-indexed)
+      param: right_file  # the param name the atom expects
+```
+
+This means the shipped `vlookup` atom works for ANY join — no custom atom needed.
+The manifest + config.json together wire business context; the atom stays reusable.
+
+---
+
 ## How it works
 
 1. User drops CSV files into `pipelines/<name>/inbox/`

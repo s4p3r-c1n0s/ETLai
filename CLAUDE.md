@@ -14,7 +14,7 @@ Guidance for coding agents working in this repository.
 
 ## Quick Links
 
-- **Tests:** [TESTS.md](TESTS.md) — 34 tests, coverage goals, how to run
+- **Tests:** [TESTS.md](TESTS.md) — coverage goals, how to run
 - **CI/CD:** [CICD.md](CICD.md) — Git hooks, release workflow, PyPI publishing
 - **Architecture:** [ARCHITECTURE.md](ARCHITECTURE.md) — Internal design, composite pipelines
 
