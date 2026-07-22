@@ -237,9 +237,11 @@ chmod +x .githooks/*
 | Helpers | ✅ 12+ tests | 90%+ | ✅ Done (config_store, env_loader, folders) |
 | Sensors | ⬜ | 80%+ | TODO (covered partially in registry tests) |
 | CLI | ⬜ | 60%+ | TODO |
-| **Overall** | **~36 tests** | **80%+** | **In Progress** |
+| **Overall** | **34 tests** | **80%+** | **✅ Base coverage complete** |
 
 Check actual coverage: `pip install -e ".[dev]"` then `pytest --cov=etlai --cov-report=html`
+
+All 34 tests passing. Pre-commit hook validates tests before each commit.
 
 ---
 
