@@ -99,12 +99,7 @@ trigger:
       stability_seconds: 2
     - type: schedule          # cron
       cron: "0 8 * * *"
-# OR for composites:
-steps:
-  - atom: first_atom
-    form: first_form
-  - atom: second_atom
-    form: second_form
+# For composites, see "Composite (multi-step) pipelines" below
 ```
 
 ### Composite (multi-step) pipelines
