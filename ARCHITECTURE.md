@@ -142,6 +142,30 @@ Each step gets its own config section keyed by `step_N`:
 }
 ```
 
+#### Scaling to 3+ steps
+
+Steps are not limited to two. Chain as many as needed:
+
+```yaml
+name: fetch_join_summarize
+min_files: 0
+env_file: ~/.etlai/secrets.env
+steps:
+  - atom: api_fetch
+    form: passthrough
+  - atom: vlookup
+    form: vlookup_column_picker
+  - atom: groupby
+    form: groupby_picker
+trigger:
+  rules:
+    - type: schedule
+      cron: "0 9 * * 1"
+```
+
+Config keys scale accordingly: `step_0`, `step_1`, `step_2`, etc.
+Each intermediate output is `_intermediate_N.csv`; only the last step writes `output.csv`.
+
 #### Execution flow
 
 1. **load_files** runs once: reads min_files from inbox, applies to all steps
@@ -149,11 +173,13 @@ Each step gets its own config section keyed by `step_N`:
    - Form reads `config["step_0"]`, shows UI if first run
    - Atom receives `file_paths` (inbox files) as input
    - Output written to `_intermediate_0.csv`
-3. **Step 1**:
-   - Form reads `config["step_1"]`, shows UI if first run
-   - Atom receives `_intermediate_0.csv` as `input_file` (previous step output)
-   - Output written to `output.csv` (final result)
-4. **On success**: all input files → processed/, final output remains in output/
+3. **Step N** (1, 2, ... last-1):
+   - Form reads `config["step_N"]`, shows UI if first run
+   - Atom receives `_intermediate_N-1.csv` as `input_file`
+   - Output written to `_intermediate_N.csv`
+4. **Last step**:
+   - Same as above but output written to `output.csv`
+5. **On success**: all input files → processed/, final output remains in output/
 
 #### Key rules
 
