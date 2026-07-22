@@ -189,6 +189,7 @@ Each intermediate output is `_intermediate_N.csv`; only the last step writes `ou
 - **Reference files**: available to all steps via `reference_files` param.
 - **env_file** (if specified in manifest): loaded once before step 0 and available to all steps.
 - **One step fails**: entire pipeline fails, files → rejected/. No partial rollback.
+- **Missing atom/form**: if a step references an atom or form that doesn't exist in user `atoms/`/`forms/` or in `etlai.atoms`/`etlai.forms`, Dagster fails at startup with an `ImportError`. The pipeline is not registered. Fix: create the atom/form or correct the name in manifest.yaml, then restart with `etlai run`.
 
 ## Data flow
 
