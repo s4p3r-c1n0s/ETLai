@@ -1,5 +1,34 @@
 # Release History
 
+## v0.3.5 (2026-07-22)
+
+### New features
+
+- **`inject_as` for reference file injection** — Manifests can declare reference files to be injected as specific atom params
+  - New `inject_as` field in `inputs:` declarations: `{step: N, param: "param_name"}`
+  - Framework resolves reference files by pattern and injects their paths into step config at runtime
+  - Eliminates need for custom wrapper atoms — shipped generic atoms (vlookup, groupby) work directly
+  - Reference file resolution is automatic and tested
+
+### Documentation improvements
+
+- **Atom Privacy Boundary** — Prominent new section in scaffold CLAUDE.md
+  - Atoms must be domain-agnostic: no hardcoded column names, file names, or business rules
+  - All business logic lives in config.json + inject_as declarations in manifest
+  - Includes concrete anti-pattern/correct-pattern examples for cloud LLM clarity
+  - Ensures atoms built by cloud LLM remain reusable across all projects
+
+- Removed hardcoded test counts from CLAUDE.md, COMMIT_GUIDELINES.md, CONTRIBUTING.md, TESTS.md
+  - Test counts always available via `pytest` — eliminates maintenance burden
+
+### No breaking changes
+
+- Manifests without `inject_as` continue to work exactly as before
+- Existing atoms, forms, and pipelines unaffected
+- New feature is purely additive
+
+---
+
 ## v0.3.4 (2026-07-22)
 
 ### Fixed
