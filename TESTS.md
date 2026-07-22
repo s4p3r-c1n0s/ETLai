@@ -226,23 +226,19 @@ When adding a new atom, form, or helper:
 
 ## Continuous Integration
 
-Once tests are in place:
+Tests run automatically via git hooks before every commit. See **[CICD.md](CICD.md)** for:
+- Pre-commit hook setup (runs pytest before commits)
+- Documentation consistency checks
+- Release workflow and PyPI publishing
+- GitHub Actions workflows (future)
 
-```yaml
-# .github/workflows/test.yml (future)
-name: Tests
-on: [push, pull_request]
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
-      - run: pip install -e ".[dev]"
-      - run: pytest --cov=etlai --cov-report=xml
-      - uses: codecov/codecov-action@v3
+**Quick setup:**
+```bash
+# Install git hooks
+git config core.hooksPath .githooks
+chmod +x .githooks/*
+
+# Now pytest runs automatically before each commit
 ```
 
 ## Current test status
