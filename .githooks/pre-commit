@@ -1,0 +1,61 @@
+#!/bin/bash
+
+# Pre-commit hook: Run tests and check documentation consistency
+
+set -e
+
+echo "🔍 Running pre-commit checks..."
+
+# 1. Run tests
+echo "🧪 Running pytest..."
+if ! python -m pytest --maxfail=1 --tb=short -q 2>/dev/null; then
+    echo "❌ Tests failed. Fix errors and try again."
+    exit 1
+fi
+echo "✅ Tests passed"
+
+# 2. Check if new test files were added but TESTS.md not updated
+NEW_TESTS=$(git diff --cached --name-only --diff-filter=A | grep -E '^tests/test_.*\.py$' || true)
+if [ -n "$NEW_TESTS" ]; then
+    if ! git diff --cached --name-only | grep -q "TESTS.md"; then
+        echo "❌ New test file(s) added but TESTS.md not staged:"
+        echo "$NEW_TESTS"
+        echo ""
+        echo "Update TESTS.md 'Current test status' table and re-stage it."
+        exit 1
+    fi
+fi
+
+# 3. Warn if source code changed but docs not staged
+ETLAI_CHANGED=$(git diff --cached --name-only | grep -E '^etlai/' || true)
+if [ -n "$ETLAI_CHANGED" ]; then
+    if ! git diff --cached --name-only | grep -q "README.md"; then
+        echo "⚠️  Source code changed but README.md not staged."
+        echo "   Review for outdated: installation, available atoms/forms, examples"
+    fi
+fi
+
+REGISTRY_CHANGED=$(git diff --cached --name-only | grep -E 'registry\.py|cli\.py' || true)
+if [ -n "$REGISTRY_CHANGED" ]; then
+    if ! git diff --cached --name-only | grep -q "ARCHITECTURE.md"; then
+        echo "⚠️  Registry/CLI changed but ARCHITECTURE.md not staged."
+        echo "   Review for outdated design or command documentation"
+    fi
+fi
+
+# 4. Check version consistency if pyproject.toml changed
+if git diff --cached --name-only | grep -q "pyproject.toml"; then
+    NEW_VERSION=$(grep '^version = ' pyproject.toml | cut -d'"' -f2)
+    INIT_VERSION=$(grep '__version__ = ' etlai/__init__.py | cut -d'"' -f2)
+
+    if [ "$NEW_VERSION" != "$INIT_VERSION" ]; then
+        echo "❌ Version mismatch:"
+        echo "   pyproject.toml: $NEW_VERSION"
+        echo "   etlai/__init__.py: $INIT_VERSION"
+        echo "   Update etlai/__init__.py to match"
+        exit 1
+    fi
+fi
+
+echo "✅ Pre-commit checks passed!"
+exit 0
