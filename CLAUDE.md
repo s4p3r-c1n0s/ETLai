@@ -2,6 +2,22 @@
 
 Guidance for coding agents working in this repository.
 
+## ⚠️ CRITICAL: Read Before Any Commit
+
+**[COMMIT_GUIDELINES.md](COMMIT_GUIDELINES.md)** — MUST follow for every commit:
+- Short titles (max 70 chars) with type prefix
+- Bullet points explaining WHY, not what
+- **NO AI attribution** — Never include "Co-Authored-By:", "Authored by Claude"
+- Imperative mood (add, not added)
+
+**[CONTRIBUTING.md](CONTRIBUTING.md)** — Development workflow, testing, PRs
+
+## Quick Links
+
+- **Tests:** [TESTS.md](TESTS.md) — 34 tests, coverage goals, how to run
+- **CI/CD:** [CICD.md](CICD.md) — Git hooks, release workflow, PyPI publishing
+- **Architecture:** [ARCHITECTURE.md](ARCHITECTURE.md) — Internal design, composite pipelines
+
 ## Project overview
 
 ETLai is a pip-installable Python package that provides a local, folder-driven
