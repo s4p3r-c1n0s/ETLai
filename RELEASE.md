@@ -1,6 +1,6 @@
 # Release History
 
-## 0.3.2 (2026-07-22)
+## v0.3.2 (2026-07-22)
 
 ### Improvements
 
@@ -34,7 +34,7 @@
 
 ---
 
-## 0.3.0 (unreleased)
+## v0.3.0 (unreleased)
 
 ### New features
 
@@ -78,16 +78,16 @@
 
 ---
 
-## 0.2.2
+## v0.2.2
 
 - Config.json always stored in project directory, not data directory
 
-## 0.2.1
+## v0.2.1
 
 - Passthrough form reads config.json (no-UI pipeline support)
 - Documentation updates
 
-## 0.2.0
+## v0.2.0
 
 ### Major restructure
 
@@ -111,11 +111,11 @@
 
 ---
 
-## 0.1.1
+## v0.1.1
 
 - Added `logic/atoms/mock_generate.py` (was missing, caused import error)
 
-## 0.1.0
+## v0.1.0
 
 - Initial release
 - Flat module structure (pre-package)

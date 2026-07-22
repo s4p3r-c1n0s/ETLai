@@ -30,6 +30,12 @@ pytest -x
 
 # Run tests matching a keyword
 pytest -k "vlookup"
+
+# Run all tests in a single test class
+pytest tests/test_atoms.py::TestVlookup
+
+# Run one test method from a class
+pytest tests/test_atoms.py::TestVlookup::test_basic_join
 ```
 
 ## Test structure
@@ -37,19 +43,18 @@ pytest -k "vlookup"
 ```
 tests/
 ├── conftest.py              # Shared fixtures
-├── test_atoms.py            # Atom contract tests
-├── test_forms.py            # Form contract tests
-├── test_registry.py         # Manifest loading and job building
-├── test_helpers.py          # Folder, config, env helpers
-├── test_sensors.py          # Trigger building
-├── test_cli.py              # CLI command tests
-└── fixtures/                # Sample manifests, CSVs, configs
-    ├── sample_users.csv
-    ├── sample_roles.csv
-    └── manifests/
-        ├── single_atom.yaml
-        └── composite.yaml
+├── test_atoms.py            # ✅ Atom contract tests (created)
+├── test_forms.py            # ✅ Form contract tests (created)
+├── test_registry.py         # ✅ Manifest loading and job building (created)
+├── test_helpers.py          # ✅ Folder, config, env helpers (created)
+├── test_sensors.py          # TODO (partially covered in registry tests)
+├── test_cli.py              # TODO (future phase)
+├── test_integration.py      # TODO (future phase)
+└── fixtures/                # TODO (created dynamically via conftest fixtures)
 ```
+
+Note: Fixtures are created programmatically via pytest fixtures in conftest.py (tmp_path, sample_csv, etc).
+No static fixture files needed.
 
 ## Test conventions
 
@@ -173,36 +178,17 @@ min_files: 2
 
 ## Fixtures (tests/conftest.py)
 
-```python
-import pytest
-import tempfile
-from pathlib import Path
+See `tests/conftest.py` for all available fixtures:
 
-@pytest.fixture
-def tmp_project(tmp_path):
-    """Create a minimal ETLai project structure."""
-    pipelines = tmp_path / "pipelines"
-    pipelines.mkdir()
-    
-    etlai_yaml = tmp_path / "etlai.yaml"
-    etlai_yaml.write_text("pipelines_root: ./pipelines\n")
-    
-    return tmp_path
+- `tmp_project` — Minimal ETLai project with pipelines/ and etlai.yaml
+- `sample_csv` — Sample data.csv with id, name, age columns
+- `sample_users_csv` — Users CSV for join tests
+- `sample_roles_csv` — Roles CSV for join tests
+- `mock_env_file` — Mock .env with API_KEY and API_URL
+- `sample_manifest` — Single-atom manifest YAML
+- `sample_composite_manifest` — Multi-step composite manifest
 
-@pytest.fixture
-def sample_csv(tmp_path):
-    """Create a sample CSV file."""
-    csv_path = tmp_path / "data.csv"
-    csv_path.write_text("id,name,age\n1,Alice,30\n2,Bob,25\n3,Charlie,35\n")
-    return csv_path
-
-@pytest.fixture
-def mock_env_file(tmp_path):
-    """Create a mock .env file."""
-    env_path = tmp_path / "test.env"
-    env_path.write_text("API_KEY=test_key_123\nAPI_URL=https://api.test.com\n")
-    return env_path
-```
+All use `tmp_path` for isolated, auto-cleaned temporary directories.
 
 ## Coverage goals
 
@@ -243,40 +229,34 @@ chmod +x .githooks/*
 
 ## Current test status
 
-| Component | Tests | Coverage | Status |
-|-----------|-------|----------|--------|
-| Atoms | ✅ 11+ tests | TBD | ✅ Done (vlookup, groupby, mock_generate, api_fetch) |
-| Forms | ✅ 4 tests | TBD | ✅ Done (passthrough) |
-| Registry | ✅ 9+ tests | TBD | ✅ Done (manifest loading, resolution, triggers) |
-| Helpers | ✅ 12+ tests | TBD | ✅ Done (config_store, env_loader, folders) |
-| Sensors | ⬜ | 0% | TODO (covered partially in registry tests) |
-| CLI | ⬜ | 0% | TODO |
+| Component | Tests | Goal | Status |
+|-----------|-------|------|--------|
+| Atoms | ✅ 11+ tests | 90%+ | ✅ Done (vlookup, groupby, mock_generate, api_fetch) |
+| Forms | ✅ 4 tests | 70%+ | ✅ Done (passthrough) |
+| Registry | ✅ 9+ tests | 85%+ | ✅ Done (manifest loading, resolution, triggers) |
+| Helpers | ✅ 12+ tests | 90%+ | ✅ Done (config_store, env_loader, folders) |
+| Sensors | ⬜ | 80%+ | TODO (covered partially in registry tests) |
+| CLI | ⬜ | 60%+ | TODO |
+| **Overall** | **~36 tests** | **80%+** | **In Progress** |
 
-**Total: ~36 tests created**
-
-Run `pip install -e ".[dev]"` then `pytest --cov=etlai` to get actual coverage numbers.
+Check actual coverage: `pip install -e ".[dev]"` then `pytest --cov=etlai --cov-report=html`
 
 ---
 
-## Next steps
+## Future work (roadmap, not stale TODOs)
 
-### Phase 2: CLI tests
-Create `tests/test_cli.py` with tests for:
-1. `etlai init` - scaffold creation, force overwrite
-2. `etlai sync` - manifest validation, folder creation
-3. `etlai list` - pipeline listing
-4. `etlai run` - (integration test, optional)
+**Phase 2: CLI tests** (when CLI becomes stable)
+- `tests/test_cli.py`: etlai init, sync, list, run commands
+- Use tmp_project fixture for project creation
 
-### Phase 3: Integration tests
-Create `tests/test_integration.py` with end-to-end tests:
-1. Full pipeline execution (file drop → sensor → job → output)
-2. Composite pipeline execution
-3. API pipeline with schedule trigger
+**Phase 3: Integration tests** (after Phase 2)
+- `tests/test_integration.py`: end-to-end pipelines
+- Mark with `@pytest.mark.integration` for optional execution
+- Requires Dagster runtime (may be slow)
 
-Mark with `@pytest.mark.integration` for optional execution.
+**Phase 4: Coverage gaps** (ongoing)
+- Edge cases: empty files, large files, unicode
+- Error paths: missing files, invalid config, bad manifest
+- Performance: mark slow tests with `@pytest.mark.slow`
 
-### Phase 4: Increase coverage
-- Add more edge cases to existing tests
-- Test error handling paths
-- Test with unicode/special characters
-- Test with large files (mark as `@pytest.mark.slow`)
+Start Phase 2 when needed. Don't rush — current 36 tests provide solid foundation.

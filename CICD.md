@@ -1,19 +1,20 @@
 # CI/CD Guide
 
-## Overview
-
-ETLai uses **git hooks** for local quality gates before commits reach the repository. This ensures all commits pass tests, documentation is current, and releases are properly tagged and published.
-
-## Quick Setup
+## Quick Setup (Do This First)
 
 ```bash
-# Install git hooks
+# Install git hooks (one-time setup)
 ./scripts/install-hooks.sh
 
-# Or manually:
-git config core.hooksPath .githooks
-chmod +x .githooks/*
+# Verify installation
+git config core.hooksPath  # Should output: .githooks
 ```
+
+After setup, **pytest runs automatically before each commit**. All releases are automatically tagged.
+
+## Overview
+
+ETLai uses **git hooks** for local quality gates before commits. This ensures all commits pass tests, documentation is current, and releases are properly tagged and published.
 
 ## Hooks Overview
 

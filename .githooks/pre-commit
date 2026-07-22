@@ -57,5 +57,15 @@ if git diff --cached --name-only | grep -q "pyproject.toml"; then
     fi
 fi
 
+# 5. Check for TODO/FIXME in production code (warnings only)
+STAGED_ETLAI=$(git diff --cached --name-only | grep '^etlai/' || true)
+if [ -n "$STAGED_ETLAI" ]; then
+    TODOS=$(git diff --cached -- etlai/ | grep -E '^\+.*\b(TODO|FIXME)\b' || true)
+    if [ -n "$TODOS" ]; then
+        echo "⚠️  TODO/FIXME found in staged code (warnings only):"
+        echo "$TODOS" | sed 's/^/   /'
+    fi
+fi
+
 echo "✅ Pre-commit checks passed!"
 exit 0
