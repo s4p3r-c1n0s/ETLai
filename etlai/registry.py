@@ -102,11 +102,19 @@ def _build_inbox_files_sensor(manifest: dict, pipeline_name: str, rule: dict | N
     If rule is None, builds default sensor from manifest min_files.
     Returns sensor or None if min_files is 0.
     """
+    # Calculate effective min_files considering inputs declarations
+    inputs_def = manifest.get("inputs")
+    default_min_files = manifest.get("min_files")
+    if default_min_files is None and inputs_def:
+        default_min_files = sum(1 for inp in inputs_def if inp.get("role") == "transient")
+    if default_min_files is None:
+        default_min_files = 1
+
     if rule:
-        min_files = rule.get("min_files", manifest.get("min_files", 1))
+        min_files = rule.get("min_files", default_min_files)
         stability_seconds = rule.get("stability_seconds", 2)
     else:
-        min_files = manifest.get("min_files", 1)
+        min_files = default_min_files
         stability_seconds = 2
 
     if min_files == 0:
@@ -182,6 +190,7 @@ def _execute_step(
     is_last: bool,
     prev_output: str | None = None,
     context=None,
+    input_metadata: list[dict] | None = None,
 ):
     """Shared logic for configuring and executing a single step (used by single and composite jobs).
 
@@ -240,6 +249,10 @@ def _execute_step(
     if ref_files:
         config["reference_files"] = ref_files
 
+    # Inject input metadata if available from manifest
+    if input_metadata:
+        config["input_metadata"] = input_metadata
+
     # Determine target path
     if is_last:
         target_path = folders.output_path("output.csv")
@@ -281,7 +294,17 @@ def _build_single_job(manifest: dict, project_root: Path):
     form_module = _resolve_form(form_name, project_root)
     folders = PipelineFolders(pipeline_name)
 
-    min_files = manifest.get("min_files", 1)
+    # Extract input metadata for atoms
+    inputs_def = manifest.get("inputs")
+    input_metadata = inputs_def if inputs_def else None
+
+    # Calculate effective min_files: explicit > auto from transient inputs > default 1
+    if "min_files" in manifest:
+        min_files = manifest["min_files"]
+    elif inputs_def:
+        min_files = sum(1 for inp in inputs_def if inp.get("role") == "transient")
+    else:
+        min_files = 1
 
     @op(name=f"{pipeline_name}__load_files", out={"file_paths": Out()})
     def _load_files(context: OpExecutionContext) -> list[str]:
@@ -315,6 +338,7 @@ def _build_single_job(manifest: dict, project_root: Path):
             is_first=True,
             is_last=True,
             context=context,
+            input_metadata=input_metadata,
         )
 
     @job(name=pipeline_name)
@@ -329,9 +353,20 @@ def _build_composite_job(manifest: dict, project_root: Path):
     """Build a Dagster job for a multi-step composite pipeline."""
     pipeline_name = manifest["name"]
     steps = manifest["steps"]
-    min_files = manifest.get("min_files", 1)
     env_file = manifest.get("env_file")
     folders = PipelineFolders(pipeline_name)
+
+    # Extract input metadata for atoms
+    inputs_def = manifest.get("inputs")
+    input_metadata = inputs_def if inputs_def else None
+
+    # Calculate effective min_files
+    if "min_files" in manifest:
+        min_files = manifest["min_files"]
+    elif inputs_def:
+        min_files = sum(1 for inp in inputs_def if inp.get("role") == "transient")
+    else:
+        min_files = 1
 
     load_op_name = manifest.get("load_files_op_name", f"{pipeline_name}__load_files")
 
@@ -376,6 +411,7 @@ def _build_composite_job(manifest: dict, project_root: Path):
                         is_first=True,
                         is_last=last,
                         context=context,
+                        input_metadata=input_metadata,
                     )
             else:
                 @op(name=op_name, ins={"file_paths": In(list), "prev_output": In(str)}, out={"output_path": Out()})
@@ -391,6 +427,7 @@ def _build_composite_job(manifest: dict, project_root: Path):
                         is_last=last,
                         prev_output=prev_output,
                         context=context,
+                        input_metadata=input_metadata,
                     )
 
             return _step

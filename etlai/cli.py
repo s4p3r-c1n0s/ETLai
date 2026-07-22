@@ -1,6 +1,7 @@
 """ETLai CLI — scaffold, validate, and run the pipeline engine."""
 
 import argparse
+import fnmatch
 import os
 import shutil
 import subprocess
@@ -141,6 +142,17 @@ def cmd_sync(args):
             if not env_path.is_file():
                 errors.append(f"{name}: env file not found: {env_file}")
 
+        # Handle inputs: field — validate and generate README
+        inputs_def = manifest.get("inputs")
+        if inputs_def:
+            _validate_inputs(inputs_def, name, pipeline_data_root, errors)
+            _generate_pipeline_readme(manifest, inputs_def, pipeline_data_root)
+
+            # Auto-calculate min_files from transient inputs if not explicitly set
+            if "min_files" not in manifest:
+                transient_count = sum(1 for inp in inputs_def if inp.get("role") == "transient")
+                manifest["_effective_min_files"] = transient_count
+
         print(f"  OK  {name} ({len(atoms_to_check)} atom(s))")
 
     if errors:
@@ -190,6 +202,112 @@ def _check_form(form_name: str, project_root: Path, pipeline_name: str, errors: 
         importlib.import_module(f"etlai.forms.{form_name}")
     except ImportError:
         errors.append(f"{pipeline_name}: form '{form_name}' not found in forms/ or etlai.forms")
+
+
+def _validate_inputs(inputs_def: list[dict], pipeline_name: str, data_root: Path, errors: list):
+    """Validate inputs declarations and check file placement."""
+    for inp in inputs_def:
+        name = inp.get("name")
+        role = inp.get("role")
+        description = inp.get("description")
+
+        if not name:
+            errors.append(f"{pipeline_name}: input missing required 'name' field")
+            continue
+        if role not in ("transient", "reference"):
+            errors.append(f"{pipeline_name}: input '{name}' has invalid role '{role}' (must be transient or reference)")
+            continue
+        if not description:
+            errors.append(f"{pipeline_name}: input '{name}' missing required 'description' field")
+            continue
+
+        # Check reference files exist
+        if role == "reference":
+            ref_dir = data_root / "reference"
+            pattern = inp.get("pattern")
+            if ref_dir.is_dir():
+                ref_files = list(ref_dir.iterdir())
+                if pattern:
+                    matched = [f for f in ref_files if fnmatch.fnmatch(f.name, pattern)]
+                    if not matched:
+                        print(f"  WARN {pipeline_name}: reference input '{name}' — no files matching '{pattern}' in reference/")
+                elif not ref_files:
+                    print(f"  WARN {pipeline_name}: reference input '{name}' — reference/ folder is empty")
+            else:
+                print(f"  WARN {pipeline_name}: reference input '{name}' — reference/ folder does not exist")
+
+        # Check transient file patterns in inbox
+        if role == "transient" and inp.get("pattern"):
+            inbox_dir = data_root / "inbox"
+            if inbox_dir.is_dir():
+                inbox_files = list(inbox_dir.iterdir())
+                matched = [f for f in inbox_files if fnmatch.fnmatch(f.name, inp["pattern"])]
+                if matched:
+                    print(f"  INFO {pipeline_name}: transient input '{name}' — {len(matched)} file(s) in inbox matching '{inp['pattern']}'")
+
+
+def _generate_pipeline_readme(manifest: dict, inputs_def: list[dict], data_root: Path):
+    """Generate PIPELINE_README.md from manifest inputs metadata."""
+    name = manifest.get("name", "unknown")
+
+    # Build step description
+    if "steps" in manifest:
+        steps_desc = " -> ".join(s["atom"] for s in manifest["steps"])
+    else:
+        steps_desc = manifest.get("atom", "unknown")
+
+    lines = [
+        f"# {name}",
+        "",
+        f"**Processing:** {steps_desc}",
+        "",
+        "## Input Files",
+        "",
+        "| Name | Folder | Role | Pattern | Description |",
+        "|------|--------|------|---------|-------------|",
+    ]
+
+    for inp in inputs_def:
+        folder = "inbox/" if inp["role"] == "transient" else "reference/"
+        pattern = inp.get("pattern", "—")
+        lines.append(f"| {inp['name']} | `{folder}` | {inp['role']} | `{pattern}` | {inp['description']} |")
+
+    lines.append("")
+    lines.append("## Folder Layout")
+    lines.append("")
+    lines.append("```")
+    lines.append(f"{name}/")
+    lines.append("  inbox/       <- Drop transient input files here (processed once, then moved)")
+    lines.append("  reference/   <- Place permanent lookup/reference files here (never moved)")
+    lines.append("  staging/     <- In-flight (managed by framework)")
+    lines.append("  processed/   <- Successfully consumed transient files")
+    lines.append("  rejected/    <- Failed files + error logs")
+    lines.append("  output/      <- Transformation results")
+    lines.append("```")
+    lines.append("")
+    lines.append("## Workflow")
+    lines.append("")
+
+    ref_inputs = [inp for inp in inputs_def if inp["role"] == "reference"]
+    transient_inputs = [inp for inp in inputs_def if inp["role"] == "transient"]
+
+    step_num = 1
+    if ref_inputs:
+        ref_names = ", ".join(f"`{inp['name']}`" for inp in ref_inputs)
+        lines.append(f"{step_num}. Place reference files ({ref_names}) in `reference/` (one-time setup)")
+        step_num += 1
+    if transient_inputs:
+        trans_names = ", ".join(f"`{inp['name']}`" for inp in transient_inputs)
+        lines.append(f"{step_num}. Drop transient files ({trans_names}) into `inbox/`")
+        step_num += 1
+    lines.append(f"{step_num}. Pipeline triggers automatically when files are detected")
+    step_num += 1
+    lines.append(f"{step_num}. Results appear in `output/`; input files move to `processed/`")
+    lines.append("")
+
+    readme_path = data_root / "PIPELINE_README.md"
+    readme_path.write_text("\n".join(lines))
+    print(f"  WROTE {readme_path.relative_to(data_root.parent) if data_root.parent != data_root else readme_path}")
 
 
 def cmd_run(args):
