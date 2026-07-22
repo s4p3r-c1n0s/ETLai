@@ -78,34 +78,57 @@ def _build_triggers(manifest: dict, pipeline_name: str, job):
 
     if not rules:
         # Default: inbox file sensor (only if min_files > 0)
-        mf = manifest.get("min_files", 1)
-        if mf > 0:
-            load_op_name = manifest.get("load_files_op_name", f"{pipeline_name}__load_files")
-            s = build_hot_folder_sensor(pipeline_name, pipeline_name, min_files=mf, load_files_op_name=load_op_name)
+        s = _build_inbox_files_sensor(manifest, pipeline_name)
+        if s:
             sensors.append(s)
     else:
         for rule in rules:
             rule_type = rule.get("type")
             if rule_type == "inbox_files":
-                min_files = rule.get("min_files", manifest.get("min_files", 1))
-                load_op_name = manifest.get("load_files_op_name", f"{pipeline_name}__load_files")
-                s = build_hot_folder_sensor(
-                    pipeline_name, pipeline_name,
-                    min_files=min_files,
-                    load_files_op_name=load_op_name,
-                    stability_seconds=rule.get("stability_seconds", 2),
-                )
-                sensors.append(s)
+                s = _build_inbox_files_sensor(manifest, pipeline_name, rule)
+                if s:
+                    sensors.append(s)
             elif rule_type == "schedule":
-                cron = rule.get("cron", "0 * * * *")
-                sched = ScheduleDefinition(
-                    name=f"{pipeline_name}_schedule",
-                    job=job,
-                    cron_schedule=cron,
-                )
-                schedules.append(sched)
+                sched = _build_schedule_definition(pipeline_name, job, rule)
+                if sched:
+                    schedules.append(sched)
 
     return sensors, schedules
+
+
+def _build_inbox_files_sensor(manifest: dict, pipeline_name: str, rule: dict | None = None):
+    """Build a hot-folder sensor for file-based triggers.
+
+    If rule is None, builds default sensor from manifest min_files.
+    Returns sensor or None if min_files is 0.
+    """
+    if rule:
+        min_files = rule.get("min_files", manifest.get("min_files", 1))
+        stability_seconds = rule.get("stability_seconds", 2)
+    else:
+        min_files = manifest.get("min_files", 1)
+        stability_seconds = 2
+
+    if min_files == 0:
+        return None
+
+    load_op_name = manifest.get("load_files_op_name", f"{pipeline_name}__load_files")
+    return build_hot_folder_sensor(
+        pipeline_name, pipeline_name,
+        min_files=min_files,
+        load_files_op_name=load_op_name,
+        stability_seconds=stability_seconds,
+    )
+
+
+def _build_schedule_definition(pipeline_name: str, job, rule: dict):
+    """Build a Dagster ScheduleDefinition from a schedule trigger rule."""
+    cron = rule.get("cron", "0 * * * *")
+    return ScheduleDefinition(
+        name=f"{pipeline_name}_schedule",
+        job=job,
+        cron_schedule=cron,
+    )
 
 
 def _load_etlai_config(project_root: Path) -> dict:
