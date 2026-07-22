@@ -1,5 +1,13 @@
 # Release History
 
+## v0.3.4 (2026-07-22)
+
+### Fixed
+
+- **NoneType crash in composite pipeline execution** — `context.op_config` can be None when no op config is provided, causing `AttributeError: 'NoneType' object has no attribute 'get'` in `_execute_step`. Now checks for None before accessing.
+
+---
+
 ## v0.3.3 (2026-07-22)
 
 ### New features

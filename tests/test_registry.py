@@ -118,6 +118,91 @@ def configure(file_paths, existing_config):
         assert result == {"custom": "form"}
 
 
+class TestExecuteStep:
+    """Tests for _execute_step."""
+
+    def test_execute_step_with_no_context(self, tmp_path, monkeypatch):
+        """context=None should not raise AttributeError."""
+        from unittest.mock import MagicMock
+        from etlai.registry import _execute_step
+        from etlai.helpers.folders import PipelineFolders
+
+        monkeypatch.chdir(tmp_path)
+
+        # Set up pipeline folders
+        pipeline_dir = tmp_path / "pipelines" / "test_pipe"
+        for d in ["inbox", "staging", "processed", "rejected", "output", "reference"]:
+            (pipeline_dir / d).mkdir(parents=True)
+
+        # Create input file
+        input_csv = pipeline_dir / "inbox" / "data.csv"
+        input_csv.write_text("id,name\n1,Alice\n")
+
+        # Mock atom that succeeds
+        atom_mod = MagicMock()
+        atom_mod.execute.return_value = '{"success": true, "message": "done"}'
+
+        # Mock form that returns config
+        form_mod = MagicMock()
+        form_mod.configure.return_value = {"input_file": str(input_csv)}
+
+        folders = PipelineFolders("test_pipe")
+
+        # Should NOT raise AttributeError: 'NoneType' object has no attribute 'get'
+        result = _execute_step(
+            atom_module=atom_mod,
+            form_module=form_mod,
+            folders=folders,
+            pipeline_name="test_pipe",
+            step_index=0,
+            file_paths=[str(input_csv)],
+            is_first=True,
+            is_last=True,
+            context=None,
+        )
+        assert result is not None
+
+    def test_execute_step_with_context_op_config_none(self, tmp_path, monkeypatch):
+        """context.op_config=None should not raise AttributeError."""
+        from unittest.mock import MagicMock
+        from etlai.registry import _execute_step
+        from etlai.helpers.folders import PipelineFolders
+
+        monkeypatch.chdir(tmp_path)
+
+        pipeline_dir = tmp_path / "pipelines" / "test_pipe"
+        for d in ["inbox", "staging", "processed", "rejected", "output", "reference"]:
+            (pipeline_dir / d).mkdir(parents=True)
+
+        input_csv = pipeline_dir / "inbox" / "data.csv"
+        input_csv.write_text("id,name\n1,Alice\n")
+
+        atom_mod = MagicMock()
+        atom_mod.execute.return_value = '{"success": true, "message": "done"}'
+
+        form_mod = MagicMock()
+        form_mod.configure.return_value = {"input_file": str(input_csv)}
+
+        folders = PipelineFolders("test_pipe")
+
+        # Context with op_config = None (the exact bug scenario)
+        mock_context = MagicMock()
+        mock_context.op_config = None
+
+        result = _execute_step(
+            atom_module=atom_mod,
+            form_module=form_mod,
+            folders=folders,
+            pipeline_name="test_pipe",
+            step_index=0,
+            file_paths=[str(input_csv)],
+            is_first=True,
+            is_last=True,
+            context=mock_context,
+        )
+        assert result is not None
+
+
 class TestTriggerBuilding:
     """Tests for trigger building."""
 

@@ -207,7 +207,7 @@ def _execute_step(
     else:
         step_existing = existing.get(f"step_{step_index}") if existing else None
 
-    reconfigure = bool(context.op_config.get("reconfigure")) if context else False
+    reconfigure = bool(context.op_config.get("reconfigure")) if context and context.op_config else False
     if reconfigure:
         step_existing = None
 
