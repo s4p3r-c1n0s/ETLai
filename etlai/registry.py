@@ -32,6 +32,8 @@ def build_definitions() -> Definitions:
     if not pipelines_root.is_dir():
         return Definitions(jobs=[], sensors=[], schedules=[])
 
+    # First pass: build all jobs
+    jobs_by_name = {}
     for manifest_path in sorted(pipelines_root.glob("*/manifest.yaml")):
         manifest = _load_manifest(manifest_path)
         if not manifest:
@@ -45,41 +47,65 @@ def build_definitions() -> Definitions:
             j = _build_single_job(manifest, project_root)
 
         jobs.append(j)
+        jobs_by_name[pipeline_name] = (j, manifest)
 
-        # Build triggers from manifest
-        trigger_config = manifest.get("trigger", {})
-        rules = trigger_config.get("rules", [])
+    # Second pass: build triggers from all manifests
+    for manifest_path in sorted(pipelines_root.glob("*/manifest.yaml")):
+        manifest = _load_manifest(manifest_path)
+        if not manifest:
+            continue
 
-        if not rules:
-            # Default: inbox file sensor (only if min_files > 0)
-            mf = manifest.get("min_files", 1)
-            if mf > 0:
-                load_op_name = manifest.get("load_files_op_name", f"{pipeline_name}__load_files")
-                s = build_hot_folder_sensor(pipeline_name, pipeline_name, min_files=mf, load_files_op_name=load_op_name)
-                sensors.append(s)
-        else:
-            for rule in rules:
-                rule_type = rule.get("type")
-                if rule_type == "inbox_files":
-                    min_files = rule.get("min_files", manifest.get("min_files", 1))
-                    load_op_name = manifest.get("load_files_op_name", f"{pipeline_name}__load_files")
-                    s = build_hot_folder_sensor(
-                        pipeline_name, pipeline_name,
-                        min_files=min_files,
-                        load_files_op_name=load_op_name,
-                        stability_seconds=rule.get("stability_seconds", 2),
-                    )
-                    sensors.append(s)
-                elif rule_type == "schedule":
-                    cron = rule.get("cron", "0 * * * *")
-                    sched = ScheduleDefinition(
-                        name=f"{pipeline_name}_schedule",
-                        job=j,
-                        cron_schedule=cron,
-                    )
-                    schedules.append(sched)
+        pipeline_name = manifest["name"]
+        job_obj = jobs_by_name[pipeline_name][0]
+
+        sensors_for_pipeline, schedules_for_pipeline = _build_triggers(manifest, pipeline_name, job_obj)
+        sensors.extend(sensors_for_pipeline)
+        schedules.extend(schedules_for_pipeline)
 
     return Definitions(jobs=jobs, sensors=sensors, schedules=schedules)
+
+
+def _build_triggers(manifest: dict, pipeline_name: str, job):
+    """Build sensors and schedules from manifest trigger rules.
+
+    Returns: (sensors_list, schedules_list)
+    """
+    sensors = []
+    schedules = []
+
+    trigger_config = manifest.get("trigger", {})
+    rules = trigger_config.get("rules", [])
+
+    if not rules:
+        # Default: inbox file sensor (only if min_files > 0)
+        mf = manifest.get("min_files", 1)
+        if mf > 0:
+            load_op_name = manifest.get("load_files_op_name", f"{pipeline_name}__load_files")
+            s = build_hot_folder_sensor(pipeline_name, pipeline_name, min_files=mf, load_files_op_name=load_op_name)
+            sensors.append(s)
+    else:
+        for rule in rules:
+            rule_type = rule.get("type")
+            if rule_type == "inbox_files":
+                min_files = rule.get("min_files", manifest.get("min_files", 1))
+                load_op_name = manifest.get("load_files_op_name", f"{pipeline_name}__load_files")
+                s = build_hot_folder_sensor(
+                    pipeline_name, pipeline_name,
+                    min_files=min_files,
+                    load_files_op_name=load_op_name,
+                    stability_seconds=rule.get("stability_seconds", 2),
+                )
+                sensors.append(s)
+            elif rule_type == "schedule":
+                cron = rule.get("cron", "0 * * * *")
+                sched = ScheduleDefinition(
+                    name=f"{pipeline_name}_schedule",
+                    job=job,
+                    cron_schedule=cron,
+                )
+                schedules.append(sched)
+
+    return sensors, schedules
 
 
 def _load_etlai_config(project_root: Path) -> dict:
