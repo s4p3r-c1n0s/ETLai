@@ -107,6 +107,68 @@ steps:
     form: second_form
 ```
 
+### Composite (multi-step) pipelines
+
+Use `steps:` instead of a single `atom:` to chain multiple transformations.
+
+#### Manifest structure
+
+```yaml
+name: vlookup_then_groupby
+min_files: 2                         # input files for step 0
+load_files_op_name: vlookup_then_groupby__load_files
+steps:
+  - atom: vlookup
+    form: vlookup_column_picker     # configures join columns
+  - atom: groupby
+    form: groupby_picker             # configures grouping column
+trigger:
+  rules:
+    - type: inbox_files
+      min_files: 2
+```
+
+#### config.json structure
+
+Each step gets its own config section keyed by `step_N`:
+
+```json
+{
+  "step_0": {
+    "left_file": "/path/to/users.csv",
+    "right_file": "/path/to/roles.csv",
+    "join_column": "user_id",
+    "output_column": "role_name"
+  },
+  "step_1": {
+    "group_by": "role_name",
+    "agg_column": null
+  }
+}
+```
+
+#### Execution flow
+
+1. **load_files** runs once: reads min_files from inbox, applies to all steps
+2. **Step 0**:
+   - Form reads `config["step_0"]`, shows UI if first run
+   - Atom receives `file_paths` (inbox files) as input
+   - Output written to `_intermediate_0.csv`
+3. **Step 1**:
+   - Form reads `config["step_1"]`, shows UI if first run
+   - Atom receives `_intermediate_0.csv` as `input_file` (previous step output)
+   - Output written to `output.csv` (final result)
+4. **On success**: all input files → processed/, final output remains in output/
+
+#### Key rules
+
+- **min_files**: applies to step 0 only. Step N>0 receives previous step's output automatically.
+- **config.json**: single file for whole pipeline. Each step reads/writes its own section. Forms never see other steps' configs.
+- **File passing**: step N receives previous output as `input_file` param. Atoms should read it, not request it from file_paths.
+- **Reference files**: available to all steps via `reference_files` param.
+- **env_file** (if specified in manifest): loaded once before step 0 and available to all steps.
+- **One step fails**: entire pipeline fails, files → rejected/. No partial rollback.
+
 ## Data flow
 
 ### File-based pipeline
