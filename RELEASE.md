@@ -1,5 +1,39 @@
 # Release History
 
+## 0.3.2 (2026-07-22)
+
+### Improvements
+
+- **Testing infrastructure** — Comprehensive pytest suite with 36+ tests
+  - `tests/test_atoms.py`: vlookup, groupby, mock_generate, api_fetch contract validation
+  - `tests/test_forms.py`: passthrough form behavior
+  - `tests/test_helpers.py`: config_store, env_loader, PipelineFolders file operations
+  - `tests/test_registry.py`: manifest loading, atom/form resolution, trigger building
+  - Fixtures for isolated file I/O with tmp_path
+  - Coverage goals: 80%+ across all components
+
+- **Documentation** — Complete CI/CD and testing guides
+  - `TESTS.md`: How to run tests, conventions, coverage goals, testing checklist
+  - `CICD.md`: Git hooks for pre-commit test validation, release workflow with PyPI publishing
+  - `TODO.md`: Dagster decoupling design using Adapter pattern (future enhancement)
+  - `ARCHITECTURE.md`: Added composite pipeline creation guide with 3+ step examples
+
+- **Registry refactoring** — Cleaner code organization
+  - Extracted `_execute_step()`: shared logic for single and composite jobs (eliminated 150+ lines duplication)
+  - Extracted `_build_triggers()`: separated trigger building from job building
+  - Extracted `_build_inbox_files_sensor()` and `_build_schedule_definition()`: per-trigger-type builders
+  - Registry now more modular and easier to extend
+
+- **Development dependencies** — Added pytest tooling
+  - `pytest>=7.4`, `pytest-cov>=4.1`, `pytest-mock>=3.11` as optional `[dev]` extras
+
+### No breaking changes
+
+- All existing pipelines, atoms, forms continue to work unchanged
+- API is backward compatible
+
+---
+
 ## 0.3.0 (unreleased)
 
 ### New features
