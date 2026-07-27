@@ -134,6 +134,19 @@ inputs:
       param: right_file
 ```
 
+### input_from
+
+Steps execute linearly by default (each reads prev step's output). For branching DAGs, use `input_from` to read from a non-adjacent predecessor:
+```yaml
+steps:
+  - atom: computed_column        # step 0
+  - name: detail_export          # step 1 (named output, reads step 0)
+    atom: rename_columns
+  - atom: group_aggregate        # step 2 reads step 0, NOT step 1
+    input_from: 0
+  - atom: rename_columns         # step 3 (final, reads step 2)
+```
+
 ### config.json
 
 Single source of business config. Written during Phase 6 by translating `business_mapping.json` into atom params:

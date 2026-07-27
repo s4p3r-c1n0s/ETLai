@@ -26,3 +26,7 @@ operations:
 # - [ ] Every operation's depends_on forms a valid DAG (no cycles)
 # - [ ] Every input_column is either from a data source or produced by a prior operation's output_columns
 # - [ ] The final operation's output_columns match the pipeline's expected output
+#
+# Note: The depends_on graph may have fan-outs (multiple ops sharing a parent).
+# During Phase 6 (assembly), these are linearized into a step sequence.
+# Steps that need non-adjacent input use `input_from: <step_index>` in the manifest.

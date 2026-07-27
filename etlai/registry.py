@@ -407,6 +407,12 @@ def _build_composite_job(manifest: dict, project_root: Path):
             raise RuntimeError(f"Need {min_files} files in {folders.inbox}, found {len(paths)}.")
         return paths[:min_files]
 
+    # Precompute input_from declarations for non-linear reads
+    input_from_map = {}
+    for i, step in enumerate(steps):
+        if "input_from" in step:
+            input_from_map[i] = step["input_from"]
+
     # Build step ops dynamically
     step_ops = []
     for i, step in enumerate(steps):
@@ -459,8 +465,15 @@ def _build_composite_job(manifest: dict, project_root: Path):
     @job(name=pipeline_name)
     def _composite_job():
         file_paths = _load_files()
+        step_outputs = []
         prev_output = step_ops[0](file_paths)
-        for step_op in step_ops[1:]:
-            prev_output = step_op(file_paths, prev_output)
+        step_outputs.append(prev_output)
+        for i, step_op in enumerate(step_ops[1:], start=1):
+            if i in input_from_map:
+                effective_input = step_outputs[input_from_map[i]]
+            else:
+                effective_input = prev_output
+            prev_output = step_op(file_paths, effective_input)
+            step_outputs.append(prev_output)
 
     return _composite_job

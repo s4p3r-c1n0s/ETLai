@@ -326,6 +326,68 @@ class TestExecuteStep:
         assert "right_file" not in received_config
 
 
+class TestInputFrom:
+    """Tests for input_from (non-linear step input routing)."""
+
+    def test_build_composite_job_with_input_from(self, tmp_path, monkeypatch):
+        """Composite job with input_from builds without error."""
+        from etlai.registry import _build_composite_job
+
+        monkeypatch.chdir(tmp_path)
+
+        # Create pipeline folders
+        pipeline_dir = tmp_path / "pipelines" / "branching_pipe"
+        for d in ["inbox", "staging", "processed", "rejected", "output", "reference"]:
+            (pipeline_dir / d).mkdir(parents=True)
+
+        manifest = {
+            "name": "branching_pipe",
+            "min_files": 1,
+            "steps": [
+                {"atom": "computed_column", "form": "passthrough"},
+                {"atom": "rename_columns", "form": "passthrough", "name": "detail"},
+                {"atom": "group_aggregate", "form": "passthrough", "input_from": 0},
+                {"atom": "rename_columns", "form": "passthrough"},
+            ],
+        }
+
+        job = _build_composite_job(manifest, tmp_path)
+        assert job is not None
+        assert job.name == "branching_pipe"
+
+    def test_input_from_map_extraction(self):
+        """input_from declarations are correctly extracted from steps."""
+        steps = [
+            {"atom": "vlookup"},
+            {"atom": "computed_column"},
+            {"atom": "rename_columns", "name": "export"},
+            {"atom": "group_aggregate", "input_from": 1},
+            {"atom": "rename_columns"},
+        ]
+
+        input_from_map = {}
+        for i, step in enumerate(steps):
+            if "input_from" in step:
+                input_from_map[i] = step["input_from"]
+
+        assert input_from_map == {3: 1}
+
+    def test_input_from_not_present_gives_empty_map(self):
+        """Linear pipeline (no input_from) gives empty map."""
+        steps = [
+            {"atom": "vlookup"},
+            {"atom": "computed_column"},
+            {"atom": "rename_columns"},
+        ]
+
+        input_from_map = {}
+        for i, step in enumerate(steps):
+            if "input_from" in step:
+                input_from_map[i] = step["input_from"]
+
+        assert input_from_map == {}
+
+
 class TestTriggerBuilding:
     """Tests for trigger building."""
 

@@ -70,6 +70,9 @@ steps:
   - name: detail_export         # Optional: named steps become first-class outputs
     atom: <atom_for_op_2>
     form: passthrough
+  - atom: <atom_for_op_3>       # input_from: reads step 0's output instead of step 1's
+    form: passthrough
+    input_from: 0
   - atom: rename_columns        # ALWAYS last step (produces output.csv)
     form: passthrough
 
@@ -202,6 +205,36 @@ Why: config.json is pre-written during assembly. There is no first-run UI needed
 
 NEVER use any other form in an automated pipeline. Forms with Tkinter UI are for human-interactive pipelines only.
 
+## Non-Linear Input (input_from)
+
+By default, each step reads the **immediately previous step's** output. When a step needs input from a different predecessor (branching pipelines), use `input_from`:
+
+```yaml
+steps:
+  - atom: vlookup               # step 0 → _intermediate_0.csv
+    form: passthrough
+  - atom: computed_column        # step 1, reads step 0 → _intermediate_1.csv
+    form: passthrough
+  - name: detail_export          # step 2, reads step 1 → detail_export.csv
+    atom: rename_columns
+    form: passthrough
+  - atom: group_aggregate        # step 3, reads step 1 (NOT step 2!)
+    form: passthrough
+    input_from: 1
+  - atom: flag_rows              # step 4, reads step 3
+    form: passthrough
+  - atom: rename_columns         # step 5 (final) → output.csv
+    form: passthrough
+```
+
+**Rules:**
+- `input_from` is a 0-indexed step number
+- It must reference an earlier step (lower index)
+- Without `input_from`, a step reads from step N-1 (default linear behavior)
+- Use when a DAG branches: one branch produces a named export, the other continues processing from an earlier point
+
+**When to use:** After a named step (like `detail_export`) that renames columns for export, the next step in the other branch needs the pre-renamed data. Point `input_from` at the step before the rename.
+
 ## Multiple Outputs (Named Steps)
 
 Use `name:` on steps to produce multiple named outputs:
@@ -223,6 +256,7 @@ All named intermediate steps produce `{name}.csv` in the output folder. The fina
 - Set `path: ask` in every manifest — user chooses data folder location during sync
 - Set `form: passthrough` on every step
 - Use `name:` for intermediate steps that are intentional outputs
+- Use `input_from: N` when a step needs input from a non-adjacent predecessor (branching DAGs)
 - Add `rename_columns` as the explicit last step
 - Translate ALL placeholders to real values in config.json (col_a → real_name)
 - Wire `inject_as` for every reference input

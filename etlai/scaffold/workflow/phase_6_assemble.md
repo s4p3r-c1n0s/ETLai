@@ -30,24 +30,31 @@ Use this to design pipelines with multiple outputs: place strategic steps (renam
 
 1. Read `pipelines/CLAUDE.md` for manifest assembly rules.
 2. Determine step order from atomic_operations.yaml depends_on chain.
-3. Map each operation to its atom (from match_results.yaml).
-4. Identify which intermediate steps should be named outputs (assign `name:` fields).
-5. Build manifest.yaml:
+3. **Linearize the DAG:** Steps execute in a single linear sequence. If the DAG branches (multiple operations depend on the same parent), flatten into a linear order:
+   - Place the shorter branch first (typically the named export with rename_columns)
+   - Then continue the longer branch
+   - On the first step of the longer branch, add `input_from: <step_index>` pointing to the shared parent step
+   - Example: ops A→B→C(export)→D(groups from B) becomes steps [A, B, C(named), D(input_from:1)]
+4. Map each operation to its atom (from match_results.yaml).
+5. Identify which intermediate steps should be named outputs (assign `name:` fields).
+6. Build manifest.yaml:
    a. Set pipeline `name` from pipeline_graph.yaml.
-   b. Build `steps:` list in execution order, each referencing its atom and `form: passthrough`.
-   c. Build `inputs:` declarations from pipeline_graph.yaml data_sources:
+   b. Build `steps:` list in linearized order, each referencing its atom and `form: passthrough`.
+   c. For any step that needs non-adjacent input, add `input_from: <step_index>`.
+   d. Build `inputs:` declarations from pipeline_graph.yaml data_sources:
       - role: reference for permanent data, role: transient for incoming data
       - Add `inject_as:` for each reference source (map to the step + param that needs it)
-   d. Build `trigger:` from pipeline_graph.yaml triggers.
-   e. Add a final step: `atom: rename_columns`, `form: passthrough` (rehydration).
-5. Build config.json:
+   e. Build `trigger:` from pipeline_graph.yaml triggers.
+   f. Add a final step: `atom: rename_columns`, `form: passthrough` (rehydration).
+7. Build config.json:
    a. For each step, translate generic params into real values using business_mapping.json:
       - `col_a` → look up real_name in business_mapping.columns → use that as param value
       - `threshold_1` → look up value in business_mapping.thresholds → use that as param value
       - Formulas: translate generic expression to real column names
    b. Structure as `{"step_0": {...}, "step_1": {...}, ...}` for composite pipelines.
    c. Final step (rename_columns) gets its mapping from business_mapping.output_columns.
-6. Run `etlai sync` to validate the manifest and create folders.
+   d. **Important:** Steps with `input_from` receive the output of the referenced step. Their config must use column names as they exist at that point in the chain (not after any subsequent renames).
+8. Run `etlai sync` to validate the manifest and create folders.
 
 ## Done When
 
