@@ -233,24 +233,12 @@ def _execute_step(
     else:
         save_config(folders, config)
 
-    # Inject file paths or previous output
-    if is_first:
-        if file_paths and "left_file" not in config and "input_file" not in config and "input_files" not in config:
-            if len(file_paths) >= 2:
-                config["left_file"] = file_paths[0]
-                config["right_file"] = file_paths[1]
-            else:
-                config["input_file"] = file_paths[0]
-    else:
-        if "input_file" not in config:
-            config["input_file"] = prev_output
-
     # Inject reference files
     ref_files = folders.list_reference_files()
     if ref_files:
         config["reference_files"] = ref_files
 
-    # Resolve inject_as declarations: inject reference file paths into step config params
+    # Resolve inject_as declarations FIRST: inject reference file paths into config params
     if input_metadata:
         for inp in input_metadata:
             inject_as = inp.get("inject_as")
@@ -260,13 +248,26 @@ def _execute_step(
             param_name = inject_as.get("param")
             if target_step != step_index or not param_name:
                 continue
-            # Find matching reference file by pattern or name
             pattern = inp.get("pattern")
             if pattern and ref_files:
                 import fnmatch
                 matched = [f for f in ref_files if fnmatch.fnmatch(Path(f).name, pattern)]
                 if matched:
                     config[param_name] = matched[0]
+
+    # Inject file paths or previous output (AFTER inject_as, so we know what's already set)
+    if is_first:
+        if file_paths and "left_file" not in config and "input_file" not in config and "input_files" not in config:
+            if len(file_paths) >= 2:
+                config["left_file"] = file_paths[0]
+                config["right_file"] = file_paths[1]
+            elif "right_file" in config:
+                config["left_file"] = file_paths[0]
+            else:
+                config["input_file"] = file_paths[0]
+    else:
+        if "input_file" not in config:
+            config["input_file"] = prev_output
 
     # Determine target path: use step_name if provided (Option B: named steps),
     # otherwise use default naming (Option A: index-based)

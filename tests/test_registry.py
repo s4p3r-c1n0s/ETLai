@@ -266,6 +266,69 @@ class TestExecuteStep:
         assert "right_file" in received_config
         assert received_config["right_file"].endswith("catalog.csv")
 
+    def test_execute_step_single_transient_with_inject_as_sets_left_file(self, tmp_path, monkeypatch):
+        """When inject_as sets right_file and there's 1 transient file, auto-inject sets left_file."""
+        from unittest.mock import MagicMock
+        from etlai.registry import _execute_step
+        from etlai.helpers.folders import PipelineFolders
+
+        monkeypatch.chdir(tmp_path)
+
+        pipeline_dir = tmp_path / "pipelines" / "test_pipe"
+        for d in ["inbox", "staging", "processed", "rejected", "output", "reference"]:
+            (pipeline_dir / d).mkdir(parents=True)
+
+        ref_file = pipeline_dir / "reference" / "catalog.csv"
+        ref_file.write_text("sku,name\nA,Widget\n")
+
+        input_csv = pipeline_dir / "inbox" / "sales.csv"
+        input_csv.write_text("sku,qty\nA,5\n")
+
+        received_config = {}
+
+        def mock_execute(params_json):
+            import json
+            received_config.update(json.loads(params_json))
+            return '{"success": true, "message": "done"}'
+
+        atom_mod = MagicMock()
+        atom_mod.execute.side_effect = mock_execute
+
+        form_mod = MagicMock()
+        form_mod.configure.return_value = {"left_column": "sku", "right_column": "sku"}
+
+        folders = PipelineFolders("test_pipe")
+
+        input_metadata = [
+            {"name": "sales", "role": "transient", "description": "Sales data"},
+            {
+                "name": "catalog",
+                "role": "reference",
+                "description": "Product catalog",
+                "pattern": "catalog.csv",
+                "inject_as": {"step": 0, "param": "right_file"},
+            },
+        ]
+
+        _execute_step(
+            atom_module=atom_mod,
+            form_module=form_mod,
+            folders=folders,
+            pipeline_name="test_pipe",
+            step_index=0,
+            file_paths=[str(input_csv)],
+            is_first=True,
+            is_last=True,
+            context=None,
+            input_metadata=input_metadata,
+        )
+
+        # right_file from inject_as, left_file from auto-injection (1 transient + right_file present)
+        assert "right_file" in received_config
+        assert "left_file" in received_config
+        assert received_config["left_file"].endswith("sales.csv")
+        assert received_config["right_file"].endswith("catalog.csv")
+
     def test_execute_step_inject_as_skips_wrong_step(self, tmp_path, monkeypatch):
         """inject_as targeting step 1 should not inject into step 0."""
         from unittest.mock import MagicMock
