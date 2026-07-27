@@ -62,11 +62,13 @@ inputs:
       param: right_file
 
 steps:
-  - atom: <atom_for_op_1>
+  - name: enrich_data           # Optional: step produces <name>.csv as output
+    atom: <atom_for_op_1>
     form: passthrough
-  - atom: <atom_for_op_2>
+  - name: detail_export         # Optional: named steps become first-class outputs
+    atom: <atom_for_op_2>
     form: passthrough
-  - atom: rename_columns        # ALWAYS last step
+  - atom: rename_columns        # ALWAYS last step (produces output.csv)
     form: passthrough
 
 trigger:
@@ -186,9 +188,26 @@ Why: config.json is pre-written during assembly. There is no first-run UI needed
 
 NEVER use any other form in an automated pipeline. Forms with Tkinter UI are for human-interactive pipelines only.
 
+## Multiple Outputs (Named Steps)
+
+Use `name:` on steps to produce multiple named outputs:
+
+```yaml
+steps:
+  - name: transaction_detail    # Produces transaction_detail.csv
+    atom: rename_columns
+    form: passthrough
+  - name: reconciliation_summary # Produces reconciliation_summary.csv (not final, will be output.csv)
+    atom: rename_columns
+    form: passthrough
+```
+
+All named intermediate steps produce `{name}.csv` in the output folder. The final step always produces `output.csv`.
+
 ## DO
 
 - Set `form: passthrough` on every step
+- Use `name:` for intermediate steps that are intentional outputs
 - Add `rename_columns` as the explicit last step
 - Translate ALL placeholders to real values in config.json (col_a → real_name)
 - Wire `inject_as` for every reference input

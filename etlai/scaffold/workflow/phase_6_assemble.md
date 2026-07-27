@@ -17,12 +17,22 @@ Wire together matched/created atoms into a working ETLai pipeline: manifest.yaml
 - `pipelines/<name>/config.json` — per-step config with real column names and values from business_mapping
 - A `rename_columns` step as the final step (rehydration from Phase 7)
 
+## Multiple Outputs (Named Steps)
+
+Steps can declare a `name:` field to produce intentional outputs:
+- Step with `name: detail_export` produces `detail_export.csv`
+- Step without `name:` uses default naming `_intermediate_N.csv`
+- Final step always produces `output.csv`
+
+Use this to design pipelines with multiple outputs: place strategic steps (rename_columns for export snapshots) at intermediate positions and give them `name:` fields.
+
 ## Process
 
 1. Read `pipelines/CLAUDE.md` for manifest assembly rules.
 2. Determine step order from atomic_operations.yaml depends_on chain.
 3. Map each operation to its atom (from match_results.yaml).
-4. Build manifest.yaml:
+4. Identify which intermediate steps should be named outputs (assign `name:` fields).
+5. Build manifest.yaml:
    a. Set pipeline `name` from pipeline_graph.yaml.
    b. Build `steps:` list in execution order, each referencing its atom and `form: passthrough`.
    c. Build `inputs:` declarations from pipeline_graph.yaml data_sources:

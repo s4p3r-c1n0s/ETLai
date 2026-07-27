@@ -106,12 +106,19 @@ def validate(pipeline_dir: Path) -> tuple[bool, list[str]]:
     if not triggers:
         errors.append("triggers is empty")
 
-    # Output
-    output = graph.get("output") or {}
-    if not output.get("description"):
-        errors.append("output.description is empty")
-    if not output.get("fields"):
-        errors.append("output.fields is empty")
+    # Outputs
+    outputs = graph.get("outputs") or []
+    if not outputs:
+        errors.append("outputs is empty")
+    else:
+        for i, out in enumerate(outputs):
+            p = f"outputs[{i}]"
+            if not out.get("name"):
+                errors.append(f"{p}.name is empty")
+            if not out.get("description"):
+                errors.append(f"{p}.description is empty")
+            if not out.get("fields"):
+                errors.append(f"{p}.fields is empty")
 
     return len(errors) == 0, errors
 

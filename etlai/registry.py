@@ -191,6 +191,7 @@ def _execute_step(
     prev_output: str | None = None,
     context=None,
     input_metadata: list[dict] | None = None,
+    step_name: str | None = None,
 ):
     """Shared logic for configuring and executing a single step (used by single and composite jobs).
 
@@ -267,11 +268,15 @@ def _execute_step(
                 if matched:
                     config[param_name] = matched[0]
 
-    # Determine target path
+    # Determine target path: use step_name if provided (Option B: named steps),
+    # otherwise use default naming (Option A: index-based)
     if is_last:
         target_path = folders.output_path("output.csv")
     else:
-        target_path = folders.output_path(f"_intermediate_{step_index}.csv")
+        if step_name:
+            target_path = folders.output_path(f"{step_name}.csv")
+        else:
+            target_path = folders.output_path(f"_intermediate_{step_index}.csv")
     config["target_path"] = target_path
 
     # Execute atom
@@ -408,10 +413,11 @@ def _build_composite_job(manifest: dict, project_root: Path):
         atom_module = _resolve_atom(step["atom"], project_root)
         form_module = _resolve_form(step.get("form", "passthrough"), project_root)
         step_op_name = f"{pipeline_name}__step_{i}_{step['atom']}"
+        step_name = step.get("name")  # Option B: named steps
         is_first = (i == 0)
         is_last = (i == len(steps) - 1)
 
-        def _make_step_op(atom_mod, form_mod, op_name, step_index, first, last):
+        def _make_step_op(atom_mod, form_mod, op_name, step_index, first, last, sname):
             if first:
                 @op(name=op_name, ins={"file_paths": In(list)}, out={"output_path": Out()})
                 def _step(context: OpExecutionContext, file_paths: list[str]) -> str:
@@ -426,6 +432,7 @@ def _build_composite_job(manifest: dict, project_root: Path):
                         is_last=last,
                         context=context,
                         input_metadata=input_metadata,
+                        step_name=sname,
                     )
             else:
                 @op(name=op_name, ins={"file_paths": In(list), "prev_output": In(str)}, out={"output_path": Out()})
@@ -442,11 +449,12 @@ def _build_composite_job(manifest: dict, project_root: Path):
                         prev_output=prev_output,
                         context=context,
                         input_metadata=input_metadata,
+                        step_name=sname,
                     )
 
             return _step
 
-        step_ops.append(_make_step_op(atom_module, form_module, step_op_name, i, is_first, is_last))
+        step_ops.append(_make_step_op(atom_module, form_module, step_op_name, i, is_first, is_last, step_name))
 
     @job(name=pipeline_name)
     def _composite_job():

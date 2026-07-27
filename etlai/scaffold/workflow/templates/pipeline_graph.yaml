@@ -46,10 +46,17 @@ triggers:
     spec: ""                  # Cron expression, folder path pattern, or API endpoint
     description: ""           # When/why this trigger fires
 
-output:
-  description: ""             # What the final output represents
-  format: ""                  # csv | json | report
-  destination: ""             # output/ folder, email, API push, dashboard
-  fields:                     # Expected output fields
-    - name: ""
-      description: ""
+outputs:
+  - name: primary              # PRIMARY/FINAL output (main report)
+    description: ""
+    format: ""                  # csv | json | report
+    destination: ""             # output/ folder, email, API push, dashboard
+    fields:
+      - name: ""
+        description: ""
+  # Optional: Additional named outputs from intermediate steps
+  # - name: detail_export
+  #   description: ""
+  #   format: ""
+  #   fields:
+  #     - name: ""
