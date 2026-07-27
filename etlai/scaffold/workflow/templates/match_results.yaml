@@ -1,0 +1,40 @@
+# Match Results — Output of Phase 4 (Match)
+# Each atomic operation mapped to an existing atom or marked for creation.
+#
+# Rules:
+# - Every operation from atomic_operations.yaml MUST appear here
+# - "matched" means an existing atom handles this operation — DO NOT create a new one
+# - "create" means no existing atom fits — Phase 5 will write one
+# - Never mark "create" if a shipped/existing atom can do the job with different config
+# - A match is valid if: same operation verb + atom accepts the required params via config
+
+matches:
+  - operation_id: ""          # ID from atomic_operations.yaml
+    status: ""                # matched | create
+    atom_name: ""             # If matched: existing atom name. If create: proposed new atom name.
+    atom_source: ""           # shipped (etlai.atoms) | user (atoms/) | new (to be created)
+    confidence: ""            # exact (params map 1:1) | partial (needs config adaptation)
+    notes: ""                 # Why this match works, or why no existing atom fits
+
+# Available shipped atoms (search these FIRST):
+#
+# - vlookup: join two tables on a key column, select output columns from each side
+#   params: left_file, right_file, left_column, right_column, left_output_columns, right_output_columns
+#
+# - groupby: group by a column with count aggregation
+#   params: input_file, group_column
+#
+# - api_fetch: HTTP GET/POST, parse response, map fields to CSV
+#   params: endpoint, method, headers, params, response_format, data_path, field_mapping
+#
+# - mock_generate: generate synthetic data from file headers using Faker
+#   params: input_files, rows
+#
+# Check user atoms/ folder for project-specific atoms before marking "create"
+
+# Validation checklist (all must be true before proceeding to Phase 5):
+# - [ ] Every operation_id from atomic_operations.yaml has an entry
+# - [ ] All "matched" entries reference atoms that actually exist (verify file exists)
+# - [ ] All "create" entries have a proposed atom name that is a generic operation verb
+# - [ ] No proposed atom name contains domain/business terms
+# - [ ] No duplicate atom creation (two operations needing the same new atom share one entry)

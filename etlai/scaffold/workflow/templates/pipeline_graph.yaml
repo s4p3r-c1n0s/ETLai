@@ -1,0 +1,55 @@
+# Pipeline Graph — Output of Phase 0 + Phase 1
+# This file is the COMPLETE business process graph.
+# It must be confirmed by the user before proceeding to Phase 2.
+#
+# Rules:
+# - Every node must have: id, operation, inputs, outputs, description
+# - Every edge must connect valid node IDs
+# - No orphan nodes (every node must have at least one edge in or out, except source/sink)
+# - data_sources must list ALL external data with retrieval method specified
+# - If any field is "unknown" or "tbd", the graph is INCOMPLETE — loop back to user
+
+name: ""                      # Pipeline name (snake_case, no domain jargon)
+description: ""               # One sentence: what this pipeline accomplishes (plain language)
+owner_confirmed: false        # Set to true ONLY after user explicitly confirms the graph
+
+data_sources:
+  - name: ""                  # Identifier for this data source
+    description: ""           # What this data contains (plain language)
+    retrieval: ""             # One of: folder_watch | api_fetch | manual_upload
+    frequency: ""             # How often new data arrives: weekly | daily | hourly | on_demand
+    format: ""                # csv | json | xml | xlsx
+    fields:                   # List of fields/columns this source provides
+      - name: ""
+        type: ""              # string | number | date | boolean
+        description: ""       # What this field represents
+    role: ""                  # transient (consumed per run) | reference (permanent lookup)
+
+nodes:
+  - id: ""                    # Unique node identifier (e.g., node_1, node_2)
+    operation: ""             # What this node does in plain language (no jargon)
+    inputs:                   # List of input data source names or upstream node IDs
+      - ""
+    outputs:                  # What this node produces
+      - field: ""
+        description: ""
+    description: ""           # Detailed explanation of the business operation
+    business_rules: []        # Any conditions, thresholds, formulas in plain language
+
+edges:
+  - from: ""                  # Source node ID or data source name
+    to: ""                    # Target node ID
+    carries: ""               # What data flows along this edge
+
+triggers:
+  - type: ""                  # schedule | folder_watch | api_poll
+    spec: ""                  # Cron expression, folder path pattern, or API endpoint
+    description: ""           # When/why this trigger fires
+
+output:
+  description: ""             # What the final output represents
+  format: ""                  # csv | json | report
+  destination: ""             # output/ folder, email, API push, dashboard
+  fields:                     # Expected output fields
+    - name: ""
+      description: ""

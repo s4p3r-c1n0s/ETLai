@@ -1,0 +1,224 @@
+# ETLai User Scenario: Weekly Sales Reconciliation Report
+
+## Background
+
+I'm a data analyst at a small e-commerce company called "UrbanNest" (home decor).
+We have:
+- Daily sales transactions (CSV dropped into a shared folder by our POS system)
+- A product catalog (reference CSV, updated monthly)
+- A supplier price list (reference CSV, updated quarterly)
+
+Every Monday morning, I need a report that:
+1. Joins sales transactions with product catalog to get category + cost info
+2. Calculates profit margin per transaction (sale_price - supplier_cost)
+3. Groups by product_category to show weekly revenue, units sold, avg margin
+4. Flags categories where avg margin dropped below 15%
+
+This is a 3-step composite pipeline:
+- Step 0: vlookup (join sales with product catalog on SKU)
+- Step 1: vlookup (join result with supplier prices on SKU to get cost)
+- Step 2: groupby (summarize by category)
+
+The margin flagging logic lives in config.json for step 2.
+
+---
+
+## Fake Data Files
+
+### sales_transactions.csv (drops into inbox weekly — simulates POS export)
+
+```csv
+transaction_id,date,sku,quantity,sale_price,customer_id
+TXN001,2026-07-14,SKU-A101,2,49.99,CUST-441
+TXN002,2026-07-14,SKU-B205,1,129.00,CUST-223
+TXN003,2026-07-15,SKU-A101,1,49.99,CUST-891
+TXN004,2026-07-15,SKU-C310,3,24.50,CUST-112
+TXN005,2026-07-16,SKU-B205,2,129.00,CUST-667
+TXN006,2026-07-16,SKU-D420,1,89.95,CUST-334
+TXN007,2026-07-17,SKU-A101,4,49.99,CUST-556
+TXN008,2026-07-17,SKU-C310,2,24.50,CUST-778
+TXN009,2026-07-18,SKU-E550,1,199.00,CUST-445
+TXN010,2026-07-18,SKU-D420,3,89.95,CUST-112
+TXN011,2026-07-18,SKU-B205,1,129.00,CUST-991
+TXN012,2026-07-19,SKU-A101,2,49.99,CUST-223
+TXN013,2026-07-19,SKU-F660,5,15.99,CUST-667
+TXN014,2026-07-20,SKU-C310,1,24.50,CUST-441
+TXN015,2026-07-20,SKU-E550,2,199.00,CUST-334
+```
+
+### product_catalog.csv (reference — lives in reference/ folder)
+
+```csv
+sku,product_name,category,weight_kg,warehouse_location
+SKU-A101,Ceramic Table Lamp,Lighting,1.2,WH-East
+SKU-B205,Velvet Accent Chair,Furniture,12.5,WH-West
+SKU-C310,Scented Soy Candle,Decor,0.3,WH-East
+SKU-D420,Woven Throw Blanket,Textiles,0.8,WH-East
+SKU-E550,Solid Oak Bookshelf,Furniture,25.0,WH-West
+SKU-F660,Cork Coaster Set,Decor,0.2,WH-East
+```
+
+### supplier_prices.csv (reference — lives in reference/ folder)
+
+```csv
+sku,supplier,unit_cost,last_updated
+SKU-A101,LumenCraft Co,18.50,2026-04-01
+SKU-B205,SeatWorks Ltd,72.00,2026-04-01
+SKU-C310,WaxHouse Inc,8.25,2026-04-01
+SKU-D420,TextilePro,31.00,2026-04-01
+SKU-E550,WoodCraft Studio,95.00,2026-04-01
+SKU-F660,CorkWorld,4.50,2026-04-01
+```
+
+---
+
+## Expected Output (after all 3 steps)
+
+After Step 0 (join sales + catalog):
+- Each transaction now has: category, product_name, warehouse_location
+
+After Step 1 (join result + supplier prices):
+- Each transaction now has: unit_cost, supplier
+
+After Step 2 (groupby category):
+- Aggregated: category, total_revenue, total_units, avg_margin_pct, margin_flag
+
+Expected final output.csv:
+```csv
+category,total_revenue,total_units,avg_margin_pct,margin_flag
+Lighting,449.91,9,63.0,OK
+Furniture,914.00,7,37.6,OK
+Decor,227.45,11,62.5,OK
+Textiles,359.80,4,65.5,OK
+```
+
+(All margins healthy in this sample — but with different supplier costs the flags would trigger.)
+
+---
+
+## Prompts for Claude Code (inside ETLai project)
+
+### Prompt 1: Initial Setup
+
+```
+I need a weekly sales reconciliation pipeline. Every Monday, our POS system
+drops a sales_transactions.csv into a folder. I need to:
+
+1. Join transactions with our product catalog (on SKU) to get category info
+2. Join that result with supplier price list (on SKU) to get unit costs
+3. Group by product category to calculate: total revenue, units sold, and
+   average profit margin percentage. Flag any category below 15% margin.
+
+The product catalog and supplier prices are reference files that rarely change.
+Sales transactions arrive weekly.
+
+Can you create this as a composite pipeline?
+```
+
+### Prompt 2: After Initial Pipeline Created (if Claude Code asks about data)
+
+```
+Here are the details:
+
+- Sales file columns: transaction_id, date, sku, quantity, sale_price, customer_id
+- Product catalog columns: sku, product_name, category, weight_kg, warehouse_location
+- Supplier prices columns: sku, supplier, unit_cost, last_updated
+- Join column for both lookups: sku
+
+For the final groupby:
+- Group by: category
+- Calculate: sum(sale_price * quantity) as total_revenue,
+             sum(quantity) as total_units,
+             avg((sale_price - unit_cost) / sale_price * 100) as avg_margin_pct
+- Flag: if avg_margin_pct < 15 then "LOW" else "OK"
+
+Trigger: file sensor, min 1 file, check every 60 seconds.
+```
+
+### Prompt 3: Reference Data Placement
+
+```
+I've placed the reference files:
+- product_catalog.csv in the pipeline's reference/ folder
+- supplier_prices.csv in the pipeline's reference/ folder
+
+The sales_transactions.csv will be dropped into inbox/ weekly by our POS system.
+
+Please write the config.json with appropriate settings for each step.
+```
+
+### Prompt 4: Verification / Testing
+
+```
+Can you run etlai sync to validate the pipeline and then show me what
+the manifest.yaml looks like? I want to verify the step order is correct
+before I drop test data.
+```
+
+---
+
+## What to Observe
+
+When running these prompts against ETLai + Claude Code, check if:
+
+1. **Problem decomposition** — Does it create a 3-step composite pipeline?
+   - Step 0: vlookup (sales + product_catalog on sku)
+   - Step 1: vlookup (intermediate_0 + supplier_prices on sku)
+   - Step 2: groupby (by category with margin calculation)
+
+2. **Atom selection** — Does it reuse shipped atoms (vlookup, groupby)?
+   - Or does it try to create custom atoms?
+   - The groupby atom may need a custom one for margin calculation (shipped groupby only does count)
+
+3. **Reference file handling** — Does it put catalog + prices in reference/?
+   - Or does it try to put them in inbox?
+
+4. **Config structure** — Does it create step_0, step_1, step_2 keys?
+   - Does each step's config match the atom's expected params?
+
+5. **Trigger setup** — Does it create an inbox_files trigger with min_files: 1?
+
+6. **Form decision** — Does it use passthrough + pre-written config.json?
+   - (Correct: no UI needed, all params known upfront)
+
+7. **Custom atom detection** — Does it realize the shipped `groupby` atom only
+   does count, and that margin calculation needs a custom atom?
+   - Expected: create a custom `margin_groupby` or `sales_summary` atom
+   - Or: extend config to handle computed columns
+
+---
+
+## Complexity Levels (for testing in order)
+
+### Level 1: Simple (2-step)
+Just steps 0 and 1 (two vlookups). Skip the groupby.
+Tests: proper chaining of two vlookup steps on same join column.
+
+### Level 2: Full (3-step)
+All three steps. Tests: mixed atom types in composite pipeline.
+
+### Level 3: Advanced (add a 4th step)
+After groupby, add a step that compares this week's margins to last week's
+(stored in reference/ as `last_week_summary.csv`). Tests: reference file
+usage in later steps + custom comparison atom.
+
+---
+
+## Alternative Public API Version
+
+If you prefer API-based ingestion instead of file drops:
+
+Replace sales_transactions.csv with a fetch from:
+- **Fake Store API**: https://fakestoreapi.com/products (free, no auth)
+  - Returns JSON with: id, title, price, category, rating
+  - Can simulate "product data ingestion"
+
+Pipeline becomes:
+- Step 0: api_fetch (get products from Fake Store API)
+- Step 1: vlookup (join with internal catalog on product_name)
+- Step 2: groupby (summarize by category)
+
+This tests: API atom + vlookup + groupby in one composite pipeline.
+env_file not needed (public API, no auth).
+
+Manifest trigger: schedule with cron "0 8 * * 1" (every Monday 8 AM).

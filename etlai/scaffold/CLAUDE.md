@@ -1,423 +1,201 @@
 # CLAUDE.md — ETLai Project
 
-This is an ETLai project. It uses a local Dagster instance to run CSV transformation
-pipelines triggered by hot folder sensors.
-
-## ⚠️ CRITICAL: Atom Privacy Boundary
-
-Atoms are **generic reusable functions**. They must NEVER contain:
-- Real column names (`df["product_sku"]`, `df["customer_email"]`)
-- Real file names (`catalog.csv`, `orders_2024.csv`)
-- Domain knowledge (what the data means, business rules)
-
-All business logic lives in `config.json` — the framework passes it as params at runtime.
-
-### ❌ WRONG — atom knows the domain:
-```python
-def execute(params_json: str) -> str:
-    df = pd.read_csv(params["input_file"])
-    catalog = pd.read_csv("reference/product_catalog.csv")  # hardcoded!
-    result = df.merge(catalog, left_on="sku", right_on="product_id")  # hardcoded columns!
-```
-
-### ✅ CORRECT — atom is generic, config supplies specifics:
-```python
-def execute(params_json: str) -> str:
-    params = json.loads(params_json)
-    df = pd.read_csv(params["left_file"])
-    right = pd.read_csv(params["right_file"])  # injected by framework via inject_as
-    result = df.merge(right, left_on=params["left_column"], right_on=params["right_column"])
-```
-
-### How business logic reaches the atom
-
-1. **config.json** (written by local LLM or form UI) supplies column names, thresholds, options
-2. **`inject_as`** in manifest injects reference file paths into atom params at runtime
-3. The atom receives everything via `params_json` — it never reaches for files or knows field names
-
-### `inject_as` in manifests
-
-Declares that a reference file should be injected as a specific param to a specific step:
-```yaml
-inputs:
-  - name: product_catalog
-    role: reference
-    description: "SKU lookup table"
-    pattern: "product_catalog.csv"
-    inject_as:
-      step: 0          # which step receives this file (0-indexed)
-      param: right_file  # the param name the atom expects
-```
-
-This means the shipped `vlookup` atom works for ANY join — no custom atom needed.
-The manifest + config.json together wire business context; the atom stays reusable.
+This is an ETLai project. Pipelines are created through a **7-phase workflow** that enforces strict separation between generic operations (atoms) and business logic (config).
 
 ---
 
-## How it works
+## The Architecture Principle
+
+Three sentences. Non-negotiable.
+
+1. **Atoms are generic reusable operations.** They perform one verb (join, compute, filter, group, flag, sort, rename) on whatever columns/files params_json tells them to. They have zero knowledge of what the data represents.
+
+2. **Business logic lives ONLY in config.json.** Column names, thresholds, formulas, file patterns — all domain specifics are in config, never in atom code.
+
+3. **The framework wires them together.** manifest.yaml declares the pipeline structure. `inject_as` maps reference files to atom params. The registry executes steps in order, passing config as params.
+
+---
+
+## The Litmus Test
+
+Before shipping ANY atom, answer:
+
+> "If I rename every column in the test data to A, B, C, D — does the atom still work identically?"
+
+**YES → ship it.** The atom is generic.
+**NO → it knows something about the data. Fix it.**
+
+---
+
+## Creating a Pipeline: The 7-Phase Workflow
+
+Pipelines are NOT created ad-hoc. Every pipeline goes through this mandatory sequence:
+
+| Phase | What happens | Artifact produced | Gate validator |
+|-------|-------------|-------------------|----------------|
+| 0 | Dejargon user's request into plain language | `pipeline_graph.yaml` (partial) | — |
+| 1 | Build complete business process graph | `pipeline_graph.yaml` (complete) | `gate_1_graph_complete.py` |
+| 2 | Separate: strip domain terms from operations | `logical_graph.yaml` + `business_mapping.json` | `gate_2_no_leakage.py` |
+| 3 | Atomize: split into smallest single-verb operations | `atomic_operations.yaml` | `gate_3_dag_valid.py` |
+| 4 | Match: find existing atoms for each operation | `match_results.yaml` | `gate_4_match_coverage.py` |
+| 5 | Create: write new atoms (for unmatched operations only) | `atoms/<name>.py` | `gate_5_atom_clean.py` |
+| 6 | Assemble: wire manifest.yaml + config.json | `manifest.yaml` + `config.json` | `gate_6_manifest_valid.py` |
+| 7 | Rehydrate: rename output columns to business names | Final step in manifest | — |
+
+**Detailed instructions for each phase:** `workflow/phase_N_<name>.md`
+**Artifact schemas:** `workflow/templates/`
+**Gate validators:** `workflow/validators/gate_N_<name>.py`
+
+### Phase Rules
+
+- Phases are **strictly sequential**. No skipping.
+- Each phase produces an artifact file. The next phase cannot start until the artifact exists AND its gate validator passes.
+- Phases 0-1 loop with the user (ask questions until the graph is complete).
+- Phases 2-7 do NOT loop back to the user. All ambiguity is resolved in 0-1.
+- Gate validators are deterministic scripts. If they return FAIL, fix errors before proceeding.
+
+---
+
+## DO NOT (Global)
+
+- **NEVER** write atom code that references real column names, file names, or domain concepts
+- **NEVER** skip phases — even for "simple" pipelines, the full workflow runs
+- **NEVER** create an atom named after a business concept (no: `sales_reconciliation`, `profit_margin`)
+- **NEVER** put two operations in one atom (join + compute = two atoms, not one)
+- **NEVER** proceed past a gate validator that returns FAIL
+- **NEVER** send `business_mapping.json` to the phase that creates atoms (Phase 5)
+- **NEVER** leave generic placeholders (col_a, threshold_1) in the final config.json
+- **NEVER** skip the rename_columns final step in composite pipelines
+
+---
+
+## Deeper Instructions (Read When Needed)
+
+| When you are... | Read this |
+|----------------|-----------|
+| Creating a new pipeline (any step) | `workflow/CLAUDE.md` → then the relevant `phase_N.md` |
+| Writing atom code | `atoms/CLAUDE.md` |
+| Assembling manifest + config | `pipelines/CLAUDE.md` |
+| Running a gate check | `workflow/validators/gate_N_<name>.py` |
+
+---
+
+## How It Works (Runtime)
 
 1. User drops CSV files into `pipelines/<name>/inbox/`
 2. A sensor detects stable files, moves them to `staging/`, triggers a job
-3. The job runs: load files → configure (form UI on first run) → execute atom → notify
+3. The job runs: load files → configure (passthrough reads config.json) → execute atom → notify
 4. On success: files → `processed/`, output → `output/`
 5. On failure: files → `rejected/` with error reason
 
-## Creating a new pipeline
+---
 
-When the user asks for a new data transformation, create up to 4 things:
+## Shipped Atoms (Search These First — Phase 4)
 
-### 1. Atom (if no existing atom fits)
+| Atom | Operation | Params |
+|------|-----------|--------|
+| `vlookup` | Join two tables on a key | `left_file, right_file, left_column, right_column, left_output_columns, right_output_columns, target_path` |
+| `computed_column` | Create new column from expression | `input_file, expression, output_column, target_path` |
+| `group_aggregate` | Group by column with sum/mean/min/max/count | `input_file, group_column, aggregations: [{column, function, output_column}], target_path` |
+| `filter_rows` | Keep rows matching condition | `input_file, condition, target_path` |
+| `flag_rows` | Add boolean column from condition (keeps all rows) | `input_file, condition, output_column, target_path` |
+| `rename_columns` | Rename columns via mapping | `input_file, mapping: {old: new}, target_path` |
+| `sort_rows` | Sort by columns | `input_file, sort_columns: [], ascending, target_path` |
+| `groupby` | Group by column with count only | `input_file, group_column, target_path` |
+| `api_fetch` | HTTP fetch, parse response to CSV | `endpoint, method, headers, params, response_format, data_path, field_mapping, target_path` |
+| `mock_generate` | Generate synthetic data from headers | `input_files, target_path, rows` |
 
-Location: `atoms/<name>.py`
+If a shipped atom handles the operation, USE IT. Do not create a new one.
 
-Contract:
-```python
-def execute(params_json: str) -> str:
-    """
-    Accepts JSON params, performs file I/O transformation, returns JSON result.
-    Must return: {"success": bool, "message": str, ...optional extra fields}
-    """
-```
+---
 
-Rules:
-- Domain-agnostic — no business knowledge
-- Reads input CSV(s), writes output CSV to `target_path`
-- All params come from JSON (file paths, column names, options)
-- Catch exceptions and return `{"success": False, "message": "..."}`
-- No Dagster imports — atoms are pure Python + pandas/duckdb
+## Shipped Forms
 
-### 2. Form (always, unless passthrough)
+| Form | Use case |
+|------|----------|
+| `passthrough` | No UI — reads config.json, passes to atom. **Use this for all automated pipelines.** |
+| `vlookup_column_picker` | Interactive join column selection (Tkinter) |
+| `groupby_picker` | Interactive group column selection (Tkinter) |
 
-Location: `forms/<name>.py`
+---
 
-Contract:
-```python
-def configure(file_paths: list[str], existing_config: dict | None) -> dict:
-    """
-    First run: show Tkinter UI, return config dict.
-    Subsequent runs: return existing_config if valid.
-    Raise RuntimeError to reject files.
-    """
-```
+## Key Concepts
 
-Rules:
-- If `existing_config` is not None and valid for these files, return it immediately (no UI)
-- The returned dict keys must match what the atom expects in `params_json`
-- Do NOT include `target_path` or file paths in the returned dict — the framework injects those
-- Use Tkinter for the UI — must work on macOS and Windows
-- Set `root.attributes("-topmost", True)` so the dialog appears above Dagster
+### inject_as
 
-### 3. Manifest (always)
-
-Location: `pipelines/<name>/manifest.yaml`
-
-Single-atom pipeline:
+Declares that a reference file should be injected as a specific atom param at runtime:
 ```yaml
-name: my_pipeline
-atom: my_atom           # resolves: atoms/ → etlai.atoms
-form: my_form           # resolves: forms/ → etlai.forms
-min_files: 1            # how many input files the sensor waits for
-path: ask               # prompts user to pick data folder during etlai sync
+inputs:
+  - name: lookup_table
+    role: reference
+    pattern: "lookup.csv"
+    inject_as:
+      step: 0
+      param: right_file
 ```
 
-The `path` field controls where inbox/staging/processed/rejected/output folders live:
-- `path: ask` — `etlai sync` opens a folder picker, writes the chosen path back into the manifest
-- `path: /absolute/path` — uses that path directly
-- Omitted — defaults to `pipelines/<name>/` inside the project
+### config.json
 
-Composite pipeline (chains multiple atoms):
-```yaml
-name: my_composite
-min_files: 2
-load_files_op_name: my_composite__load_files
-steps:
-  - atom: first_atom
-    form: first_form
-  - atom: second_atom
-    form: second_form
-```
-
-In composites, the output of step N becomes the input file for step N+1's form and atom.
-
-### 4. Helper (only if needed)
-
-Location: `helpers/<name>.py` — for shared utilities used by multiple forms or atoms.
-
-## After creating files
-
-Run `etlai sync` to validate manifests and create missing folders.
-Then `etlai run` to start Dagster with the new pipeline active.
-
-## Shipped atoms (available without creating new ones)
-
-### vlookup
-Left join between two CSV files on specified columns.
+Single source of business config. Written during Phase 6 by translating `business_mapping.json` into atom params:
 ```json
-{"left_file", "right_file", "left_column", "right_column",
- "left_output_columns": [], "right_output_columns": [], "target_path"}
+{
+  "step_0": {"left_column": "sku", "right_column": "sku", "right_output_columns": ["category"]},
+  "step_1": {"expression": "price * quantity", "output_column": "revenue"},
+  "step_2": {"mapping": {"revenue": "total_revenue", "flag_1": "low_margin"}}
+}
 ```
 
-### groupby
-Group by a column with count aggregation.
-```json
-{"input_file", "group_column", "target_path"}
-```
+### Reference folder
 
-### mock_generate
-Generate synthetic CSV from source file headers using Faker.
-```json
-{"input_files": [], "target_path": "dir/", "rows": 20}
-```
+`pipelines/<name>/reference/` — permanent data (lookup tables, price lists). Never moved or consumed. Wired to atoms via `inject_as`.
 
-## Shipped forms (available without creating new ones)
-
-- `vlookup_column_picker` — join column + output column multi-select with dtype validation
-- `groupby_picker` — single column selection for group-by
-- `passthrough` — no UI, reads config.json and passes it to the atom
-
-## No-UI pipelines
-
-For pipelines that don't need user interaction, use `form: passthrough` and pre-write
-the `config.json` in the pipeline's data folder:
-
-```json
-// pipelines/groupby_religion/config.json
-{"group_column": "religion"}
-```
-
-The passthrough form reads this and passes it as atom params. This is how Claude Code
-sets business logic without requiring a Tkinter UI — just write the config file directly.
-
-## Config persistence
-
-- Saved to `pipelines/<name>/config.json` inside the **project directory** (not the data path)
-- Even when `path` points elsewhere, config stays in the project where Claude Code can read/write it
-- Delete `config.json` to force reconfiguration
-- Composite pipelines store per-step config as `{"step_0": {...}, "step_1": {...}}`
-
-## Resolution order
-
-- Atoms: `./atoms/<name>.py` → `etlai.atoms.<name>` (installed package)
-- Forms: `./forms/<name>.py` → `etlai.forms.<name>` (installed package)
-
-User-created files take precedence over shipped ones.
-
-## Reference folder
-
-Each pipeline has a `reference/` folder for permanent supporting data:
-- Lookup tables used on every run
-- Previous API fetch results (for diff comparison)
-- Any file the atom needs across multiple runs
-
-Reference files are passed to the atom as `reference_files: [paths]` in params.
-Unlike inbox files, they are never moved or consumed.
-
-## Trigger rules
-
-Triggers determine when a pipeline runs. Defined in manifest under `trigger.rules`:
+### Triggers
 
 ```yaml
 trigger:
   rules:
-    - type: inbox_files          # watch for new files (default if no trigger specified)
-      min_files: 2
-      stability_seconds: 2
-    - type: schedule             # cron-based trigger
-      cron: "0 8 * * *"         # daily at 8am
+    - type: inbox_files       # watch for new files
+      min_files: 1
+    - type: schedule          # cron-based
+      cron: "0 8 * * 1"
 ```
 
-Multiple rules can coexist — a pipeline can trigger on both new files AND a schedule.
-If no `trigger` block is specified, defaults to `inbox_files` with the manifest's `min_files`.
+---
 
-Available trigger types:
-- `inbox_files` — hot folder sensor (today's default)
-- `schedule` — cron expression via Dagster schedule
+## Resolution Order
+
+- Atoms: `./atoms/<name>.py` → `etlai.atoms.<name>` (shipped package)
+- Forms: `./forms/<name>.py` → `etlai.forms.<name>` (shipped package)
+
+User-created files take precedence over shipped ones.
+
+---
+
+## API Pipelines
+
+For data fetched from APIs:
+- Use `api_fetch` atom (shipped) for simple single-request APIs
+- Create custom atom for complex APIs (OAuth2, pagination, request signing)
+- Store credentials in `~/.etlai/secrets.env` (never committed)
+- Declare `env_file` and `requires_env` in manifest
+- Set `min_files: 0` and use `schedule` trigger
+
+---
 
 ## Constraints
 
 - Python 3.10+ required
-- CSV files only for processing (sensors accept .xlsx filenames but atoms use CSV readers)
-- Two-file jobs assign left/right by lexical filename order
-- First-run config opens Tkinter — process needs desktop access
-- Do not commit `pipelines/*/inbox/`, `staging/`, `processed/`, `rejected/`, `output/`, or `config.json`
-- Reference files are permanent — do not gitignore `reference/` if they should be version-controlled
+- CSV files only for processing
+- `form: passthrough` for all automated pipelines (Tkinter forms are for human-interactive only)
+- Do not commit: `pipelines/*/inbox/`, `staging/`, `processed/`, `rejected/`, `output/`, `config.json`
+- Reference files are permanent — do not gitignore `reference/`
 
-## Common commands
+---
+
+## Common Commands
 
 ```bash
-etlai init .          # scaffold project (already done)
 etlai sync            # validate manifests, create folders
 etlai run             # start Dagster dev server
 etlai list            # show registered pipelines
 ```
-
-## API pipelines
-
-For pipelines that ingest data from APIs instead of (or in addition to) inbox files:
-
-### Manifest with env_file
-
-```yaml
-name: fetch_hr_attendance
-atom: hr_attendance_fetch       # custom atom per API
-form: passthrough
-min_files: 0
-env_file: ~/.etlai/secrets.env  # absolute path, outside project
-requires_env:                   # validated during etlai sync
-  - HR_API_TOKEN
-  - HR_API_BASE_URL
-trigger:
-  rules:
-    - type: schedule
-      cron: "0 8 * * *"
-```
-
-### How env vars work
-
-1. User creates `~/.etlai/secrets.env` (never committed, never in project):
-   ```
-   HR_API_TOKEN=sk-xxxxx
-   HR_API_BASE_URL=https://hr.company.com/api/v2
-   ```
-
-2. Framework loads env file before atom execution — vars available via `os.environ`
-
-3. Atom reads credentials from environment, never from config:
-   ```python
-   token = os.environ["HR_API_TOKEN"]
-   base_url = os.environ["HR_API_BASE_URL"]
-   ```
-
-### Writing API atoms
-
-Each API gets its own atom because auth, pagination, parsing, and error handling
-differ per API. The atom handles:
-- HTTP client logic (auth headers, request signing)
-- Response parsing (JSON/XML/CSV/NDJSON)
-- Pagination (cursor, offset, link header)
-- Rate limiting / retries
-- Writing output CSV to `target_path`
-
-The atom does NOT contain:
-- Actual endpoint URLs (comes from config.json)
-- Field names or business logic (comes from config.json)
-- Credentials (comes from os.environ via env_file)
-
-### config.json for API pipelines (pre-written by Claude Code)
-
-```json
-{
-  "endpoint_path": "/attendance",
-  "params": {"department": "engineering"},
-  "data_path": "results.items",
-  "field_mapping": {
-    "employee": "name",
-    "date": "attendance_date",
-    "status": "status_code"
-  }
-}
-```
-
-### Shipped atom: api_fetch
-
-A generic single-request fetcher for simple APIs. For complex APIs (OAuth2,
-pagination, request signing), create a custom atom.
-
-Params for api_fetch:
-```json
-{
-  "endpoint": "https://api.example.com/data",
-  "method": "GET",
-  "headers": {"Authorization": "Bearer ${API_TOKEN}"},
-  "params": {"limit": 100},
-  "response_format": "json",
-  "data_path": "results.items",
-  "field_mapping": {"output_col": "response.nested.field"},
-  "target_path": "..."
-}
-```
-
-Note: `${VAR_NAME}` in headers is resolved from os.environ at runtime.
-
-### Example: creating a custom API pipeline
-
-1. Create `atoms/salesforce_fetch.py`:
-```python
-import csv, json, os
-from urllib.request import Request, urlopen
-
-def execute(params_json: str) -> str:
-    params = json.loads(params_json)
-    token = os.environ["SF_TOKEN"]
-    base_url = os.environ["SF_BASE_URL"]
-
-    # Custom OAuth2 refresh, SOQL query, pagination...
-    # Write results to params["target_path"]
-    return json.dumps({"success": True, "row_count": N, "message": "..."})
-```
-
-2. Pre-write `pipelines/sf_contacts/config.json`:
-```json
-{"query": "SELECT Name, Email FROM Contact WHERE Active__c = true"}
-```
-
-3. Create `pipelines/sf_contacts/manifest.yaml`:
-```yaml
-name: sf_contacts
-atom: salesforce_fetch
-form: passthrough
-min_files: 0
-env_file: ~/.etlai/secrets.env
-requires_env:
-  - SF_TOKEN
-  - SF_BASE_URL
-trigger:
-  rules:
-    - type: schedule
-      cron: "0 6 * * 1"
-```
-
-4. User adds to `~/.etlai/secrets.env`:
-```
-SF_TOKEN=00D...
-SF_BASE_URL=https://myorg.salesforce.com
-```
-
-5. Run `etlai sync` then `etlai run`.
-
-## Example: adding a "filter rows" pipeline
-
-1. Create `atoms/filter_rows.py`:
-```python
-import json
-import pandas as pd
-
-def execute(params_json: str) -> str:
-    params = json.loads(params_json)
-    df = pd.read_csv(params["input_file"])
-    col = params["filter_column"]
-    op = params["operator"]
-    val = params["threshold"]
-    # ... apply filter ...
-    df_filtered.to_csv(params["target_path"], index=False)
-    return json.dumps({"success": True, "row_count": len(df_filtered), "message": "..."})
-```
-
-2. Create `forms/filter_config.py`:
-```python
-def configure(file_paths, existing_config):
-    if existing_config:
-        return existing_config
-    # Show Tkinter with column dropdown, operator dropdown, threshold input
-    # Return: {"filter_column": "age", "operator": ">", "threshold": 18}
-```
-
-3. Create `pipelines/filter_by_age/manifest.yaml`:
-```yaml
-name: filter_by_age
-atom: filter_rows
-form: filter_config
-min_files: 1
-```
-
-4. Run `etlai sync` then `etlai run`.

@@ -1,5 +1,97 @@
 # Release History
 
+## v0.4.0 (2026-07-27)
+
+### Architecture: The Fortress (7-Phase Workflow)
+
+- **Mandatory 7-phase pipeline creation workflow** — Enforces strict atom privacy boundary
+  - Phase 0: Dejargon user request (expand business jargon to plain language)
+  - Phase 1: Build complete business process graph (loop with user until confirmed)
+  - Phase 2: Separation (strip domain terms, produce logical_graph + business_mapping)
+  - Phase 3: Atomize (split into single-verb operations, valid DAG)
+  - Phase 4: Match (find existing atoms, mark new ones for creation)
+  - Phase 5: Create atoms (write generic code, enforced info boundary)
+  - Phase 6: Assemble (wire manifest.yaml + config.json from business_mapping)
+  - Phase 7: Rehydrate (rename output columns to business names)
+  - Each phase has deterministic structural validators (gate scripts)
+
+- **Deterministic validators at each gate** — No more "did I do this right?"
+  - `gate_1_graph_complete.py` — pipeline_graph structural completeness
+  - `gate_2_no_leakage.py` — domain term scan (logical_graph vs business_mapping)
+  - `gate_3_dag_valid.py` — single verbs, valid DAG, no cycles
+  - `gate_4_match_coverage.py` — all ops matched, atoms exist on disk
+  - `gate_5_atom_clean.py` — atom code has ZERO domain leakage, has execute()
+  - `gate_6_manifest_valid.py` — manifest + config structurally sound
+
+### New generic atoms (6 new shipped atoms)
+
+- **`computed_column`** — Evaluate pandas expression on columns → new column
+  - Params: `input_file, expression, output_column, target_path`
+  - Supports: `col_a * col_b`, `(col_a - col_b) / col_a * 100`, any pandas expression
+
+- **`group_aggregate`** — Group by column with flexible aggregations
+  - Params: `input_file, group_column, aggregations: [{column, function, output_column}], target_path`
+  - Functions: sum, mean, min, max, count, first, last
+  - Replaces need for custom atoms with hardcoded aggregations
+
+- **`filter_rows`** — Keep rows matching a condition (removes rows)
+  - Params: `input_file, condition, target_path`
+  - Condition: pandas query expression, e.g., `col_a > 10`
+
+- **`flag_rows`** — Add boolean column from condition (keeps ALL rows)
+  - Params: `input_file, condition, output_column, target_path`
+  - Unlike filter, this preserves data while marking flagged rows
+
+- **`rename_columns`** — Rename columns via mapping (Phase 7 rehydration step)
+  - Params: `input_file, mapping: {old: new}, target_path`
+  - Mandatory as final step in composite pipelines
+
+- **`sort_rows`** — Sort by one or more columns
+  - Params: `input_file, sort_columns: [], ascending, target_path`
+  - Ascending can be bool (all columns) or list (per-column)
+
+### Documentation: The Constitution
+
+- **Rewritten scaffold CLAUDE.md** — Architecture principle + routing document
+  - 3-sentence principle: atoms are generic, config is business logic, framework wires
+  - Litmus test: rename columns to A/B/C — does atom still work?
+  - Phase table with gates
+  - Global DO NOTs (8 hard rules)
+  - Routing to deeper docs (atoms/CLAUDE.md, pipelines/CLAUDE.md, workflow/)
+
+- **New atoms/CLAUDE.md** — Atom creation law
+  - Naming: `<verb>_<object>` only, no domain nouns
+  - Contract: accept everything via params_json, nothing hardcoded
+  - Testing rules: generic column names in tests (col_a, col_b)
+  - Litmus test enforcement
+
+- **New pipelines/CLAUDE.md** — Assembly law
+  - Manifest structure for single + composite pipelines
+  - How to translate business_mapping.json → config.json
+  - inject_as rules for reference file wiring
+  - rename_columns as mandatory final step
+
+- **Complete workflow documentation**
+  - `workflow/CLAUDE.md` — Phase protocol, sequencing rules, artifact storage
+  - `phase_0_dejargon.md` through `phase_7_rehydrate.md` — Per-phase playbooks
+  - `validators/` — Six gate validator scripts
+  - `templates/` — Artifact schemas for each phase
+
+### No breaking changes
+
+- All existing atoms (vlookup, groupby, api_fetch, mock_generate) continue to work
+- All existing manifests continue to work unchanged
+- New phase workflow is for NEW pipeline creation only
+- Scaffold templates include full workflow documentation
+
+### Test coverage
+
+- 18 new tests for 6 new atoms (computed_column, group_aggregate, filter_rows, flag_rows, rename_columns, sort_rows)
+- All tests use generic column names, pass litmus test
+- Total: 69 tests passing
+
+---
+
 ## v0.3.5 (2026-07-22)
 
 ### New features

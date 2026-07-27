@@ -229,14 +229,14 @@ chmod +x .githooks/*
 
 | Component | Tests | Goal | Status |
 |-----------|-------|------|--------|
-| Atoms | ✅ | 90%+ | ✅ Done (vlookup, groupby, mock_generate, api_fetch) |
+| Atoms | ✅ | 90%+ | ✅ Done (vlookup, groupby, mock_generate, api_fetch, computed_column, group_aggregate, filter_rows, flag_rows, rename_columns, sort_rows) |
 | Forms | ✅ | 70%+ | ✅ Done (passthrough) |
 | Registry | ✅ | 85%+ | ✅ Done (manifest loading, resolution, triggers, execute_step, inject_as) |
 | Helpers | ✅ | 90%+ | ✅ Done (config_store, env_loader, folders) |
 | Inputs | ✅ | 90%+ | ✅ Done (validation, README gen, min_files calc) |
 | Sensors | ⬜ | 80%+ | TODO (covered partially in registry tests) |
 | CLI | ⬜ | 60%+ | TODO |
-| **Overall** | **Run `pytest` for count** | **80%+** | **✅ Base coverage complete** |
+| **Overall** | **Run `pytest` for count** | **80%+** | **✅ Comprehensive coverage** |
 
 Check actual coverage: `pip install -e ".[dev]"` then `pytest --cov=etlai --cov-report=html`
 

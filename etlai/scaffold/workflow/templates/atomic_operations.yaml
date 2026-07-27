@@ -1,0 +1,28 @@
+# Atomic Operations — Output of Phase 3 (Atomize)
+# Each entry is the SMALLEST possible single operation.
+# No entry may contain more than one verb (join AND compute = two entries, not one).
+#
+# Rules:
+# - One operation per entry, no compound operations
+# - Uses only generic placeholders (col_a, col_b) — no business terms
+# - Each entry maps to exactly one atom in Phase 4/5
+# - Order matters: execution sequence top-to-bottom
+# - Test: "can this be split further?" — if yes, split it
+
+operations:
+  - id: ""                    # Unique ID: op_1, op_2, etc.
+    from_node: ""             # Which logical_graph node this was split from
+    operation: ""             # Single verb: join | compute | group | filter | sort | rename | flag | aggregate
+    description: ""           # What this operation does in generic terms (no domain language)
+    params:                   # Parameters using only generic placeholders
+      {}
+    input_columns: []         # Which columns this operation reads
+    output_columns: []        # Which columns this operation produces or modifies
+    depends_on: []            # IDs of operations that must complete before this one
+
+# Validation checklist (all must be true before proceeding to Phase 4):
+# - [ ] No operation has more than one verb
+# - [ ] No business/domain terms appear anywhere in this file
+# - [ ] Every operation's depends_on forms a valid DAG (no cycles)
+# - [ ] Every input_column is either from a data source or produced by a prior operation's output_columns
+# - [ ] The final operation's output_columns match the pipeline's expected output

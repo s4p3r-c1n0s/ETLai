@@ -1,0 +1,48 @@
+# Logical Graph — Output of Phase 2 (Separation)
+# Pure operations stripped of all business meaning.
+# Column names are replaced with generic placeholders.
+# Business terms are replaced with operation verbs.
+#
+# Rules:
+# - No node may reference a real column name, business entity, or domain term
+# - Every node operation must be a generic verb: join, compute, group, filter, sort, rename, flag, aggregate
+# - Formulas use placeholder column names (col_a, col_b) not real names
+# - If you can tell what industry this pipeline is for by reading this file, it FAILED separation
+
+name: ""                      # Same as pipeline_graph.yaml name
+
+nodes:
+  - id: ""                    # Same node IDs as pipeline_graph.yaml
+    operation: ""             # Generic operation verb: join | compute | group | filter | sort | rename | flag | aggregate
+    params:                   # Operation parameters using ONLY generic placeholders
+      # For join:
+      #   left_key: "col_a"
+      #   right_key: "col_b"
+      #   select_from_right: ["col_c", "col_d"]
+      #
+      # For compute:
+      #   expression: "col_a * col_b"
+      #   output_column: "computed_1"
+      #
+      # For group:
+      #   group_by: "col_a"
+      #   aggregations:
+      #     - column: "col_b"
+      #       function: sum
+      #
+      # For filter/flag:
+      #   condition: "col_a < threshold_1"
+      #   output_column: "flag_1"
+      #
+      # For rename:
+      #   mapping: {col_a: "output_name_1", col_b: "output_name_2"}
+    inputs: []                # Upstream node IDs or data source placeholders (source_1, source_2)
+    outputs: []               # Generic output column names produced by this node
+
+edges:
+  - from: ""
+    to: ""
+
+triggers:
+  - type: ""                  # schedule | folder_watch
+    spec: ""                  # Cron expression or file pattern (no real folder paths)

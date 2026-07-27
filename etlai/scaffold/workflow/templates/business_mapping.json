@@ -1,0 +1,60 @@
+{
+  "_comment": "Business Mapping — Output of Phase 2 (Separation). Maps generic placeholders in logical_graph.yaml back to real business terms. This file is the ONLY place domain knowledge lives. It is used by config.json assembly (Phase 6) and output rehydration (Phase 7).",
+  "_rules": [
+    "Every placeholder in logical_graph.yaml MUST have an entry here",
+    "No entry here should appear anywhere in atom code",
+    "This file is never sent to cloud LLM during atom creation (Phase 5)",
+    "Column mappings, thresholds, formulas with real names all live here"
+  ],
+
+  "columns": {
+    "col_a": {
+      "real_name": "",
+      "source": "",
+      "type": "",
+      "description": ""
+    },
+    "col_b": {
+      "real_name": "",
+      "source": "",
+      "type": "",
+      "description": ""
+    }
+  },
+
+  "thresholds": {
+    "threshold_1": {
+      "value": null,
+      "unit": "",
+      "description": ""
+    }
+  },
+
+  "formulas": {
+    "expression_1": {
+      "generic": "col_a * col_b",
+      "business_meaning": "",
+      "real_expression": ""
+    }
+  },
+
+  "sources": {
+    "source_1": {
+      "real_name": "",
+      "file_pattern": "",
+      "role": "",
+      "description": ""
+    }
+  },
+
+  "output_columns": {
+    "computed_1": {
+      "business_name": "",
+      "description": ""
+    },
+    "flag_1": {
+      "business_name": "",
+      "description": ""
+    }
+  }
+}
