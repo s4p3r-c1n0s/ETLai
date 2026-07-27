@@ -1,3 +1,3 @@
 """ETLai — local, folder-driven Dagster CSV transformation engine."""
 
-__version__ = "0.4.3"
+__version__ = "0.5.0"
