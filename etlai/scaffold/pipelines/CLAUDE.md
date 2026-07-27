@@ -17,6 +17,7 @@ If any of these are missing, STOP. Go back to the appropriate earlier phase.
 
 ```yaml
 name: <pipeline_name>
+path: ask                           # Prompt user for data folder location during sync
 atom: <atom_name>
 form: passthrough
 min_files: <count of transient inputs>
@@ -46,6 +47,7 @@ trigger:
 
 ```yaml
 name: <pipeline_name>
+path: ask                           # Prompt user for data folder location during sync
 min_files: <count of transient inputs>
 load_files_op_name: <pipeline_name>__load_files
 
@@ -144,6 +146,18 @@ How to determine the correct step and param:
 2. That operation maps to a step index (same order as steps list)
 3. The atom for that step expects the file as a specific param (typically `right_file` for joins, `input_file` for single-input atoms)
 
+## path: Field
+
+**Always set `path: ask` in manifests.** This prompts the user during `etlai sync` to choose where the pipeline's data folders should live.
+
+When `path: ask` is present:
+1. Running `etlai sync` opens a Tkinter folder picker
+2. User selects the data root location (e.g., `/Users/bob/Documents/my_pipeline_data`)
+3. The manifest is updated: `path: /Users/bob/Documents/my_pipeline_data`
+4. All lifecycle folders are created inside: `inbox/`, `staging/`, `processed/`, `rejected/`, `output/`, `reference/`
+
+Without `path:`, the default is `pipelines/<pipeline_name>/` inside the project directory.
+
 ## min_files Calculation
 
 ```
@@ -206,6 +220,7 @@ All named intermediate steps produce `{name}.csv` in the output folder. The fina
 
 ## DO
 
+- Set `path: ask` in every manifest — user chooses data folder location during sync
 - Set `form: passthrough` on every step
 - Use `name:` for intermediate steps that are intentional outputs
 - Add `rename_columns` as the explicit last step
