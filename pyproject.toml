@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ETLai"
-version = "0.4.0"
+version = "0.4.1"
 description = "Local, folder-driven Dagster CSV transformation engine with hot-folder sensors, AI-assisted pipeline creation, and Tkinter configuration UI."
 readme = "README.md"
 license = {text = "MIT"}
