@@ -295,9 +295,11 @@ Orchestrator: [Reports to user]
 
 ---
 
-## Integration Checklist
+## Integration Checklist (Planned — Not Yet Implemented)
 
-When the 5-agent system is fully implemented:
+The agent system prompts are complete. The orchestration code that spawns agents, enforces the firewall, and runs gates is planned for a future release. Track progress in `docs/AGENT_BUILD_ROADMAP.md`.
+
+**Validation criteria for when implementation ships:**
 
 - [ ] Orchestrator entry point exists (CLI or Python script)
 - [ ] Orchestrator successfully spawns all 5 agents in sequence

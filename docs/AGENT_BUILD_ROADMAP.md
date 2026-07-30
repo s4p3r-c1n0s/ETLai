@@ -242,8 +242,9 @@ Prompts (done):
 ├── etlai/scaffold/agents/SEPARATOR_SYSTEM_PROMPT.md
 ├── etlai/scaffold/agents/ATOM_SMITH_SYSTEM_PROMPT.md
 ├── etlai/scaffold/agents/ASSEMBLER_SYSTEM_PROMPT.md
-├── AGENT_IMPLEMENTATION_PLAN.md
-└── AGENT_BUILD_ROADMAP.md (this file)
+├── etlai/scaffold/HOW_TO_USE_AGENTS.md
+├── docs/AGENT_IMPLEMENTATION_PLAN.md
+└── docs/AGENT_BUILD_ROADMAP.md (this file)
 
 To be created:
 ├── etlai/cli.py (or new entry point) — Orchestrator caller
@@ -296,11 +297,12 @@ Pick options that match your architecture preference before building.
 If continuing later:
 
 1. Read this roadmap (you're reading it now ✓)
-2. Read AGENT_IMPLEMENTATION_PLAN.md for detailed architecture
-3. Read the 5 system prompts to understand each agent's role
-4. Pick Build Step 1 (Business Analyst) and start coding
-5. Test incrementally (unit tests for one agent at a time)
-6. When all agents work, wire orchestrator
-7. Run end-to-end integration test
+2. Read `docs/AGENT_IMPLEMENTATION_PLAN.md` for detailed architecture
+3. Read the 5 system prompts in `etlai/scaffold/agents/`
+4. Read `etlai/scaffold/HOW_TO_USE_AGENTS.md` for end-user perspective
+5. Pick Build Step 1 (Business Analyst) and start coding
+6. Test incrementally (unit tests for one agent at a time)
+7. When all agents work, wire orchestrator
+8. Run end-to-end integration test
 
 The foundation is solid. The agents know their jobs. Now build them.

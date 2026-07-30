@@ -82,3 +82,17 @@ New atoms go in `atoms/` at project root.
 Schema definitions for all artifacts: `workflow/templates/`
 
 Every artifact MUST conform to its template schema. Missing required fields = incomplete artifact = gate not passed.
+
+## 5-Agent Mode
+
+The 7-phase workflow can be executed manually (one LLM session doing all phases) or via the **5-agent system** where specialized agents handle specific phases:
+
+- Phases 0-1 → Business Analyst agent (loops with user)
+- Phases 2-3 → Separator agent (mechanical, no user interaction)
+- Phases 4-5 → Atom Smith agent (firewalled from business_mapping.json)
+- Phases 6-7 → Assembler agent (wires final pipeline)
+- Orchestrator routes between agents and validates gates
+
+Agent system prompts: `../agents/`
+
+The phase files, gate validators, and artifact schemas are identical in both modes. The agents simply automate who-does-what and enforce the firewall.

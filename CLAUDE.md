@@ -18,6 +18,8 @@ Guidance for coding agents working in this repository.
 - **CI/CD:** [CICD.md](CICD.md) — Git hooks, release workflow, tagging
 - **Publishing:** [PUBLISH.md](PUBLISH.md) — Building and publishing to PyPI
 - **Architecture:** [ARCHITECTURE.md](ARCHITECTURE.md) — Internal design, composite pipelines
+- **Changelog:** [CHANGELOG.md](CHANGELOG.md) — Release history
+- **Agents:** [docs/AGENT_BUILD_ROADMAP.md](docs/AGENT_BUILD_ROADMAP.md) — 5-agent system implementation plan
 
 ## Project overview
 

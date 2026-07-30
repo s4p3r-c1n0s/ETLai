@@ -74,9 +74,30 @@ Pipelines are NOT created ad-hoc. Every pipeline goes through this mandatory seq
 | When you are... | Read this |
 |----------------|-----------|
 | Creating a new pipeline (any step) | `workflow/CLAUDE.md` → then the relevant `phase_N.md` |
+| Using the 5-agent system | `agents/ORCHESTRATOR_SYSTEM_PROMPT.md` (start here) |
+| Understanding agent roles | `HOW_TO_USE_AGENTS.md` |
 | Writing atom code | `atoms/CLAUDE.md` |
 | Assembling manifest + config | `pipelines/CLAUDE.md` |
 | Running a gate check | `workflow/validators/gate_N_<name>.py` |
+
+---
+
+## 5-Agent Pipeline Creation System
+
+For complex pipelines, a 5-agent system automates the 7-phase workflow:
+
+| Agent | Phases | Role |
+|-------|--------|------|
+| **Orchestrator** | All | Routes work, enforces firewall, validates gates |
+| **Business Analyst** | 0-1 | Loops with user until graph is confirmed |
+| **Separator** | 2-3 | Strips domain terms, builds generic DAG |
+| **Atom Smith** | 4-5 | Finds/creates atoms (firewalled from business data) |
+| **Assembler** | 6-7 | Wires manifest + config with real values |
+
+Agent system prompts: `agents/`
+End-user guide: `HOW_TO_USE_AGENTS.md`
+
+**Status:** System prompts complete. Agent orchestration code is planned (see `docs/AGENT_BUILD_ROADMAP.md`).
 
 ---
 
