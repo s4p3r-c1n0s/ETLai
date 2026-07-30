@@ -229,7 +229,8 @@ For data fetched from APIs:
 ## Common Commands
 
 ```bash
-etlai sync            # validate manifests, create folders
-etlai run             # start Dagster dev server
-etlai list            # show registered pipelines
+etlai create "request"  # create pipeline via 5-agent system (orchestrator + gates)
+etlai sync              # validate manifests, create folders
+etlai run               # start Dagster dev server
+etlai list              # show registered pipelines
 ```

@@ -82,8 +82,17 @@ def validate(pipeline_dir: Path, project_root: Path) -> tuple[bool, list[str]]:
                     f"Last step atom is '{last_atom}', expected 'rename_columns' for rehydration"
                 )
 
-        # Config must have step_N entries
-        for i in range(len(steps)):
+        # Config must have step_N entries (step_0 uses flat top-level config at runtime)
+        if "step_0" not in config and len(steps) > 0:
+            top_level_has_params = any(
+                k for k in config if not k.startswith("step_")
+            )
+            if not top_level_has_params:
+                errors.append(
+                    "config.json missing params for step 0: "
+                    "place step-0 params at the top level (runtime reads flat config for step 0)"
+                )
+        for i in range(1, len(steps)):
             key = f"step_{i}"
             if key not in config:
                 errors.append(f"config.json missing '{key}' for step {i}")

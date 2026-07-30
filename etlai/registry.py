@@ -266,8 +266,11 @@ def _execute_step(
             else:
                 config["input_file"] = file_paths[0]
     else:
-        if "input_file" not in config:
-            config["input_file"] = prev_output
+        if "left_file" not in config and "input_file" not in config:
+            if "right_file" in config:
+                config["left_file"] = prev_output
+            else:
+                config["input_file"] = prev_output
 
     # Determine target path: use step_name if provided (Option B: named steps),
     # otherwise use default naming (Option A: index-based)

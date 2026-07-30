@@ -509,3 +509,195 @@ class TestTriggerBuilding:
         assert schedule is not None
         assert schedule.name == "test_pipeline_schedule"
         assert schedule.cron_schedule == "0 8 * * *"
+
+
+class TestStep0ConfigRegression:
+    """Regression: step 0 in composites should read flat top-level config."""
+
+    def test_step_0_reads_flat_config(self, tmp_path, monkeypatch):
+        """Step 0 in a composite pipeline uses the full flat config.json, not step_0 key."""
+        from unittest.mock import MagicMock
+        from etlai.registry import _execute_step
+        from etlai.helpers.folders import PipelineFolders
+
+        monkeypatch.chdir(tmp_path)
+
+        pipeline_dir = tmp_path / "pipelines" / "test_pipe"
+        for d in ["inbox", "staging", "processed", "rejected", "output", "reference"]:
+            (pipeline_dir / d).mkdir(parents=True)
+
+        # Write config with params at top level (no step_0 key)
+        import json
+        config_path = pipeline_dir / "config.json"
+        config_path.write_text(json.dumps({
+            "left_column": "sku",
+            "right_column": "sku",
+            "step_1": {"expression": "a * b", "output_column": "result"},
+        }))
+
+        input_csv = pipeline_dir / "inbox" / "data.csv"
+        input_csv.write_text("sku,qty\nA,5\n")
+
+        received_config = {}
+
+        def mock_execute(params_json):
+            received_config.update(json.loads(params_json))
+            return '{"success": true, "message": "done"}'
+
+        atom_mod = MagicMock()
+        atom_mod.execute.side_effect = mock_execute
+
+        form_mod = MagicMock()
+        form_mod.configure.return_value = {
+            "left_column": "sku", "right_column": "sku"
+        }
+
+        folders = PipelineFolders("test_pipe")
+
+        _execute_step(
+            atom_module=atom_mod,
+            form_module=form_mod,
+            folders=folders,
+            pipeline_name="test_pipe",
+            step_index=0,
+            file_paths=[str(input_csv)],
+            is_first=True,
+            is_last=False,
+            context=None,
+        )
+
+        # Step 0 should have received the flat config params
+        assert received_config["left_column"] == "sku"
+        assert received_config["right_column"] == "sku"
+
+
+class TestMidPipelineJoinRegression:
+    """Regression: mid-pipeline join (step ≥ 1) should set left_file when right_file is injected."""
+
+    def test_step_1_with_inject_as_right_file_sets_left_file(self, tmp_path, monkeypatch):
+        """When inject_as sets right_file for step ≥ 1, prev_output goes to left_file."""
+        from unittest.mock import MagicMock
+        from etlai.registry import _execute_step
+        from etlai.helpers.folders import PipelineFolders
+
+        monkeypatch.chdir(tmp_path)
+
+        pipeline_dir = tmp_path / "pipelines" / "test_pipe"
+        for d in ["inbox", "staging", "processed", "rejected", "output", "reference"]:
+            (pipeline_dir / d).mkdir(parents=True)
+
+        ref_file = pipeline_dir / "reference" / "prices.csv"
+        ref_file.write_text("sku,price\nA,10\n")
+
+        # Simulate prev_output from step 0
+        prev_output_file = pipeline_dir / "output" / "_intermediate_0.csv"
+        prev_output_file.write_text("sku,qty\nA,5\n")
+
+        import json
+        config_path = pipeline_dir / "config.json"
+        config_path.write_text(json.dumps({
+            "left_column": "sku",
+            "right_column": "sku",
+            "step_1": {"left_column": "sku", "right_column": "sku"},
+        }))
+
+        received_config = {}
+
+        def mock_execute(params_json):
+            received_config.update(json.loads(params_json))
+            return '{"success": true, "message": "done"}'
+
+        atom_mod = MagicMock()
+        atom_mod.execute.side_effect = mock_execute
+
+        form_mod = MagicMock()
+        form_mod.configure.return_value = {"left_column": "sku", "right_column": "sku"}
+
+        folders = PipelineFolders("test_pipe")
+
+        input_metadata = [
+            {
+                "name": "prices",
+                "role": "reference",
+                "description": "Price list",
+                "pattern": "prices.csv",
+                "inject_as": {"step": 1, "param": "right_file"},
+            },
+        ]
+
+        _execute_step(
+            atom_module=atom_mod,
+            form_module=form_mod,
+            folders=folders,
+            pipeline_name="test_pipe",
+            step_index=1,
+            file_paths=[str(prev_output_file)],
+            is_first=False,
+            is_last=True,
+            prev_output=str(prev_output_file),
+            context=None,
+            input_metadata=input_metadata,
+        )
+
+        # right_file set by inject_as, left_file should be prev_output
+        assert "right_file" in received_config
+        assert received_config["right_file"].endswith("prices.csv")
+        assert "left_file" in received_config
+        assert received_config["left_file"] == str(prev_output_file)
+        # input_file should NOT be set when right_file is present
+        assert "input_file" not in received_config
+
+    def test_step_1_without_inject_as_sets_input_file(self, tmp_path, monkeypatch):
+        """Normal step ≥ 1 (no inject_as) sets input_file = prev_output as before."""
+        from unittest.mock import MagicMock
+        from etlai.registry import _execute_step
+        from etlai.helpers.folders import PipelineFolders
+
+        monkeypatch.chdir(tmp_path)
+
+        pipeline_dir = tmp_path / "pipelines" / "test_pipe"
+        for d in ["inbox", "staging", "processed", "rejected", "output", "reference"]:
+            (pipeline_dir / d).mkdir(parents=True)
+
+        prev_output_file = pipeline_dir / "output" / "_intermediate_0.csv"
+        prev_output_file.write_text("sku,qty\nA,5\n")
+
+        import json
+        config_path = pipeline_dir / "config.json"
+        config_path.write_text(json.dumps({
+            "left_column": "sku",
+            "step_1": {"expression": "a * b", "output_column": "result"},
+        }))
+
+        received_config = {}
+
+        def mock_execute(params_json):
+            received_config.update(json.loads(params_json))
+            return '{"success": true, "message": "done"}'
+
+        atom_mod = MagicMock()
+        atom_mod.execute.side_effect = mock_execute
+
+        form_mod = MagicMock()
+        form_mod.configure.return_value = {"expression": "a * b", "output_column": "result"}
+
+        folders = PipelineFolders("test_pipe")
+
+        _execute_step(
+            atom_module=atom_mod,
+            form_module=form_mod,
+            folders=folders,
+            pipeline_name="test_pipe",
+            step_index=1,
+            file_paths=[str(prev_output_file)],
+            is_first=False,
+            is_last=True,
+            prev_output=str(prev_output_file),
+            context=None,
+        )
+
+        # No inject_as → input_file = prev_output (normal behavior)
+        assert "input_file" in received_config
+        assert received_config["input_file"] == str(prev_output_file)
+        assert "left_file" not in received_config
+        assert "right_file" not in received_config

@@ -45,8 +45,9 @@ tests/
 ├── conftest.py              # Shared fixtures
 ├── test_atoms.py            # ✅ Atom contract tests (created)
 ├── test_forms.py            # ✅ Form contract tests (created)
-├── test_registry.py         # ✅ Manifest loading and job building (created)
+├── test_registry.py         # ✅ Manifest loading, job building, inject_as, input_from
 ├── test_helpers.py          # ✅ Folder, config, env helpers (created)
+├── test_orchestrator.py     # ✅ Gate runner, firewall, context building, phase status
 ├── test_sensors.py          # TODO (partially covered in registry tests)
 ├── test_cli.py              # TODO (future phase)
 ├── test_integration.py      # TODO (future phase)
@@ -231,12 +232,13 @@ chmod +x .githooks/*
 |-----------|-------|------|--------|
 | Atoms | ✅ | 90%+ | ✅ Done (vlookup, groupby, mock_generate, api_fetch, computed_column, group_aggregate, filter_rows, flag_rows, rename_columns, sort_rows) |
 | Forms | ✅ | 70%+ | ✅ Done (passthrough) |
-| Registry | ✅ | 85%+ | ✅ Done (manifest loading, resolution, triggers, execute_step, inject_as) |
+| Registry | ✅ | 85%+ | ✅ Done (manifest loading, resolution, triggers, execute_step, inject_as, input_from, mid-pipeline joins) |
 | Helpers | ✅ | 90%+ | ✅ Done (config_store, env_loader, folders) |
 | Inputs | ✅ | 90%+ | ✅ Done (validation, README gen, min_files calc) |
+| Orchestrator | ✅ | 85%+ | ✅ Done (gate runner, firewall, agent context, phase status, pipeline naming) |
 | Sensors | ⬜ | 80%+ | TODO (covered partially in registry tests) |
 | CLI | ⬜ | 60%+ | TODO |
-| **Overall** | **Run `pytest` for count** | **80%+** | **✅ Comprehensive coverage** |
+| **Overall** | **104 tests** | **80%+** | **✅ Comprehensive coverage** |
 
 Check actual coverage: `pip install -e ".[dev]"` then `pytest --cov=etlai --cov-report=html`
 

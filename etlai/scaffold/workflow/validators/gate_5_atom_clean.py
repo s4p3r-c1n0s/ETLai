@@ -103,8 +103,8 @@ def validate(pipeline_dir: Path, project_root: Path) -> tuple[bool, list[str]]:
 
         # Check for domain leakage
         for name in real_names:
-            # Skip very short names that could be false positives
-            if len(name) <= 3:
+            # Skip very short names that could be false positives (matches gate 2 threshold)
+            if len(name) <= 2:
                 continue
             if name in source_lower:
                 # Check if it's in a comment vs actual code
