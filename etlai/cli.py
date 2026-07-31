@@ -25,7 +25,7 @@ def cmd_init(args):
 
     scaffold = _scaffold_dir()
 
-    for item in ["etlai.yaml", "dagster.yaml", "definitions.py", "CLAUDE.md"]:
+    for item in ["etlai.yaml", "dagster.yaml", "definitions.py", "CLAUDE.md", "ORCHESTRATION.md", "HOW_TO_USE_AGENTS.md"]:
         src = scaffold / item
         dst = target / item
         if dst.exists() and not args.force:

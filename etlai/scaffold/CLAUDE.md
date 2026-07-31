@@ -73,8 +73,8 @@ Pipelines are NOT created ad-hoc. Every pipeline goes through this mandatory seq
 
 | When you are... | Read this |
 |----------------|-----------|
-| Creating a new pipeline (any step) | `workflow/CLAUDE.md` → then the relevant `phase_N.md` |
-| Using the 5-agent system | `agents/ORCHESTRATOR_SYSTEM_PROMPT.md` (start here) |
+| Creating a pipeline via agents | `ORCHESTRATION.md` (the full script, follow step by step) |
+| Creating a new pipeline (manual) | `workflow/CLAUDE.md` → then the relevant `phase_N.md` |
 | Understanding agent roles | `HOW_TO_USE_AGENTS.md` |
 | Writing atom code | `atoms/CLAUDE.md` |
 | Assembling manifest + config | `pipelines/CLAUDE.md` |
