@@ -63,16 +63,16 @@ git commit --no-verify -m "WIP: work in progress"
 The `prepare-commit-msg` hook detects release commits by analyzing:
 
 1. **Version bump in pyproject.toml** — Staged changes increment version
-2. **RELEASE.md update** — New version entry exists
+2. **CHANGELOG.md update** — New version entry exists
 3. **Commit message pattern** — Matches `release: v*` or `chore: bump version to *`
 
 ### Release commit requirements
 
 When the hook detects a release commit, it verifies:
 
-- ✅ Version in `pyproject.toml` matches new RELEASE.md entry
-- ✅ Version in `etlai/__init__.py` matches pyproject.toml
-- ✅ RELEASE.md has a new section for this version
+- ✅ Version in `pyproject.toml` matches `etlai/__init__.py`
+- ✅ CHANGELOG.md has a dated section for this version (not just [Unreleased])
+- ✅ No empty changelog section (must have at least one bullet)
 
 If any check fails, the commit is **blocked** with an actionable error message.
 
@@ -92,7 +92,7 @@ git commit -m "release stuff"
 
 After a release commit succeeds, the `post-commit` hook:
 
-1. Detects if the commit is a release (checks RELEASE.md changes)
+1. Detects if the commit is a release (checks CHANGELOG.md changes)
 2. Extracts version from `pyproject.toml`
 3. Creates an **annotated git tag**: `git tag -a v0.4.0 -m "Release v0.4.0"`
 4. Reminds you to push tags: `git push origin --tags`
@@ -174,7 +174,7 @@ pytest --cov=etlai --cov-report=term
 # Verify coverage is acceptable (>80%)
 ```
 
-#### 2. Update version numbers
+#### 2. Update version numbers and changelog
 
 Edit **3 files** to match the new version:
 
@@ -188,9 +188,12 @@ version = "0.4.0"
 __version__ = "0.4.0"
 ```
 
-**RELEASE.md** (add new section at the top):
+**CHANGELOG.md** — move `[Unreleased]` to the new version:
 ```markdown
-## v0.4.0 (2026-07-22)
+## [Unreleased]
+<!-- empty, ready for next cycle -->
+
+## [0.4.0] — 2026-07-22
 
 ### Added
 - Workflow orchestration with multi-agent support
@@ -199,10 +202,9 @@ __version__ = "0.4.0"
 ### Fixed
 - Registry trigger building performance
 - Composite pipeline config handling
-
-### Changed
-- Refactored registry for better modularity
 ```
+
+**Rule: NEVER publish without a CHANGELOG.md entry.** Every version on PyPI must have a corresponding section documenting what changed and why.
 
 #### 3. Update documentation (if needed)
 
@@ -222,7 +224,7 @@ __version__ = "0.4.0"
 
 ```bash
 # Stage version files
-git add pyproject.toml etlai/__init__.py RELEASE.md
+git add pyproject.toml etlai/__init__.py CHANGELOG.md
 
 # Stage documentation if updated
 git add README.md ARCHITECTURE.md TESTS.md
@@ -275,14 +277,14 @@ For first-time setup, TestPyPI usage, troubleshooting, and credentials configura
 # Using GitHub CLI
 gh release create v0.4.0 \
   --title "v0.4.0 - Workflow orchestration" \
-  --notes-file RELEASE.md \
+  --notes-file CHANGELOG.md \
   dist/*
 
 # Or manually via GitHub web interface:
 # 1. Go to https://github.com/umang/ETLai/releases/new
 # 2. Select tag: v0.4.0
 # 3. Title: v0.4.0 - Workflow orchestration
-# 4. Copy changelog from RELEASE.md
+# 4. Copy changelog from CHANGELOG.md
 # 5. Attach dist/ files
 # 6. Publish release
 ```
@@ -440,7 +442,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
-          body_path: RELEASE.md
+          body_path: CHANGELOG.md
           draft: false
           prerelease: false
 ```
@@ -451,15 +453,18 @@ See **[PUBLISH.md](PUBLISH.md)** for complete PyPI credentials setup, token crea
 
 ## Checklist: Preparing for a Release
 
+- [ ] **CHANGELOG.md updated** (MANDATORY — blocker for publish)
+  - Move `[Unreleased]` content to `[X.Y.Z] — YYYY-MM-DD`
+  - Add new `[Unreleased]` section at top
+  - Ensure ALL user-visible changes documented
 - [ ] All tests pass (`pytest --cov=etlai`)
-- [ ] Version bumped in 3 places (pyproject.toml, __init__.py, RELEASE.md)
-- [ ] RELEASE.md has new section with changelog
+- [ ] Version bumped in 2 places (pyproject.toml, etlai/__init__.py)
 - [ ] README.md reflects new features (if user-facing changes)
 - [ ] ARCHITECTURE.md updated (if internal design changed)
 - [ ] TESTS.md updated (if new tests added)
 - [ ] All documentation reviewed for accuracy
 - [ ] Clean build environment (`rm -rf dist/ build/ *.egg-info`)
-- [ ] Commit with message: `release: vX.Y.Z - <summary>`
+- [ ] Commit with message: `chore: bump version to X.Y.Z`
 - [ ] Hook creates tag automatically (verify with `git tag`)
 - [ ] Push: `git push origin main --tags`
 - [ ] Build and publish: See [PUBLISH.md](PUBLISH.md) for complete steps
@@ -488,7 +493,7 @@ See **[PUBLISH.md](PUBLISH.md)** for complete troubleshooting of build and uploa
 
 ```bash
 # Find all version references
-grep -r "0.3.1" pyproject.toml etlai/__init__.py RELEASE.md README.md
+grep -r "0.3.1" pyproject.toml etlai/__init__.py CHANGELOG.md README.md
 
 # Update all to match
 ```
@@ -523,7 +528,7 @@ git push origin v0.4.0
 **Can I publish from a feature branch?**  
 No. Always release from `main` to keep tags and releases predictable.
 
-**What if I forget to update RELEASE.md?**  
+**What if I forget to update CHANGELOG.md?**  
 The pre-commit hook will catch it and block the commit.
 
 **Can I delete a release from PyPI?**  

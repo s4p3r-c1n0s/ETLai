@@ -111,6 +111,7 @@ pytest -m "not slow and not integration"
 - Read input files, write output to `target_path`
 - Return `{"success": False, "message": "..."}` on error
 - No Dagster imports (pure Python)
+- Litmus test: rename all columns to A, B, C — atom still works?
 
 ### Forms
 
@@ -122,12 +123,31 @@ pytest -m "not slow and not integration"
 - Raise RuntimeError to reject files
 - For no-UI pipelines: use `passthrough` form + pre-written config.json
 
+### Gate validators
+
+Gate scripts live in `workflow/validators/`. They validate intermediate artifacts during pipeline creation.
+
+**Rules:**
+- Must be deterministic (no LLM judgment, no network calls)
+- Exit 0 = PASS, exit 1 = FAIL
+- stdout: `GATE N: PASS` or `GATE N: FAIL` with indented error bullets
+- Test via: `python workflow/validators/gate_N_<name>.py pipelines/<name>/workflow/`
+
+### Agent system prompts
+
+Agent prompts live in `agents/`. Each defines one agent's role in the 5-agent pipeline creation system.
+
+**Rules:**
+- One file per agent role (business_analyst, separator, atom_smith, assembler)
+- Must specify: what the agent reads, what it writes, what it NEVER sees
+- Reference phase playbooks in `workflow/phase_N_<name>.md`
+
 ### Documentation
 
 - Update `README.md` if changing user-facing API
 - Update `ARCHITECTURE.md` if changing internal design
-- Update `TESTS.md` if adding new tests
-- Add docstrings to new functions
+- Update `TESTS.md` if adding new test files
+- Update `CHANGELOG.md` for user-visible changes
 
 ---
 
@@ -168,20 +188,23 @@ pytest -m "not slow and not integration"
 See [CICD.md](CICD.md) for release workflow and [PUBLISH.md](PUBLISH.md) for building/publishing.
 
 **Quick summary:**
-1. Update version in 3 files: `pyproject.toml`, `etlai/__init__.py`, `RELEASE.md`
-2. Commit: `release: vX.Y.Z - <summary>`
-3. Post-commit hook auto-creates git tag
-4. Build and publish: See [PUBLISH.md](PUBLISH.md)
+1. Update version in `pyproject.toml` and `etlai/__init__.py`
+2. Update `CHANGELOG.md` with user-visible changes
+3. Commit: `chore: bump version to X.Y.Z`
+4. Post-commit hook auto-creates git tag
+5. Build and publish: See [PUBLISH.md](PUBLISH.md)
 
 ---
 
 ## Questions?
 
-- **Tests:** See [TESTS.md](TESTS.md)
-- **CI/CD:** See [CICD.md](CICD.md)
-- **Publishing:** See [PUBLISH.md](PUBLISH.md)
-- **Commits:** See [COMMIT_GUIDELINES.md](COMMIT_GUIDELINES.md)
-- **Architecture:** See [ARCHITECTURE.md](ARCHITECTURE.md)
+- **Architecture:** [ARCHITECTURE.md](ARCHITECTURE.md) — system design, contracts, agent system
+- **Tests:** [TESTS.md](TESTS.md) — test guide, coverage goals
+- **CI/CD:** [CICD.md](CICD.md) — hooks, release workflow
+- **Publishing:** [PUBLISH.md](PUBLISH.md) — PyPI build/publish
+- **Commits:** [COMMIT_GUIDELINES.md](COMMIT_GUIDELINES.md) — message format
+- **Changelog:** [CHANGELOG.md](CHANGELOG.md) — release history
+- **Tech debt:** [TECH_DEBT.md](TECH_DEBT.md) — known structural issues
 - **Issues:** Open issue on GitHub
 
 ---

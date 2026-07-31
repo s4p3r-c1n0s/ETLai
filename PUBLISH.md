@@ -284,12 +284,12 @@ python -m twine upload dist/*
 **Fix:**
 ```bash
 # You MUST bump the version number
-# Edit: pyproject.toml, etlai/__init__.py, RELEASE.md
+# Edit: pyproject.toml, etlai/__init__.py, CHANGELOG.md
 # Then rebuild and upload
 
 # Example: 0.3.5 → 0.3.6
 sed -i '' 's/0.3.5/0.3.6/' pyproject.toml etlai/__init__.py
-# Update RELEASE.md manually
+# Update CHANGELOG.md manually
 git commit -am "chore: bump to v0.3.6"
 rm -rf dist/ build/
 python -m build
@@ -300,7 +300,7 @@ python -m twine upload dist/*
 
 ```bash
 # Find all version references
-grep -r "0.3.5" pyproject.toml etlai/__init__.py RELEASE.md
+grep -r "0.3.5" pyproject.toml etlai/__init__.py CHANGELOG.md
 
 # Ensure all match before building
 ```
@@ -356,7 +356,9 @@ pip install ETLai --no-cache-dir
 
 Run through this checklist before every `twine upload`:
 
-- [ ] Version bumped in 3 files: `pyproject.toml`, `etlai/__init__.py`, `RELEASE.md`
+- [ ] **CHANGELOG.md has entry for this version** (MANDATORY — never publish without changelog)
+- [ ] Version bumped in 2 files: `pyproject.toml`, `etlai/__init__.py`
+- [ ] CHANGELOG.md `[Unreleased]` section moved to `[X.Y.Z] — YYYY-MM-DD`
 - [ ] Release commit created and tagged (see [CICD.md](CICD.md))
 - [ ] All tests pass: `pytest --cov=etlai`
 - [ ] Build directory cleaned: `rm -rf dist/ build/ *.egg-info`
@@ -373,7 +375,7 @@ Run through this checklist before every `twine upload`:
 ## Related Documentation
 
 - **[CICD.md](CICD.md)** — Complete release workflow including version bumping, git hooks, tagging
-- **[RELEASE.md](RELEASE.md)** — Changelog and version history
+- **[CHANGELOG.md](CHANGELOG.md)** — Changelog and version history
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** — Development workflow and guidelines
 
 ---
