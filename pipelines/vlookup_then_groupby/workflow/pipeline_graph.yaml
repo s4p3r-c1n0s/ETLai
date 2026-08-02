@@ -1,0 +1,69 @@
+name: vlookup_then_groupby
+description: Join student bio data with exam marks on roll number, then count students per religion
+owner_confirmed: true
+
+data_sources:
+  - name: student_records
+    description: Student demographic information (name, roll number, religion, gender, etc.)
+    retrieval: folder_watch
+    frequency: on_demand
+    format: csv
+    fields:
+      - {name: "first name", type: string, description: "Student first name"}
+      - {name: "last name", type: string, description: "Student last name"}
+      - {name: "middle name", type: string, description: "Student middle name"}
+      - {name: "roll number", type: string, description: "Unique student identifier"}
+      - {name: "religion", type: string, description: "Student religion"}
+      - {name: "gender", type: string, description: "Student gender"}
+      - {name: "birth date", type: date, description: "Date of birth"}
+      - {name: "section", type: string, description: "Class section"}
+    role: transient
+
+  - name: marks_data
+    description: Student exam results (subject, marks, test type)
+    retrieval: folder_watch
+    frequency: on_demand
+    format: csv
+    fields:
+      - {name: "roll number", type: string, description: "Student identifier linking to bio data"}
+      - {name: "subject", type: string, description: "Exam subject"}
+      - {name: "marks", type: number, description: "Score obtained"}
+      - {name: "testType", type: string, description: "Type of test (midterm, final, etc.)"}
+    role: transient
+
+nodes:
+  - id: node_1
+    operation: Join student records with marks using roll number as key
+    inputs: [student_records, marks_data]
+    outputs:
+      - {field: "merged records", description: "Student bio data enriched with marks"}
+    description: Left join bio data with marks so each mark row has the student's demographic info
+    business_rules: []
+
+  - id: node_2
+    operation: Count students grouped by religion
+    inputs: [node_1]
+    outputs:
+      - {field: "religion", description: "Religion category"}
+      - {field: "count", description: "Number of students in this religion"}
+    description: Group merged dataset by religion column and count occurrences
+    business_rules: []
+
+edges:
+  - {from: student_records, to: node_1, carries: student demographics}
+  - {from: marks_data, to: node_1, carries: exam results}
+  - {from: node_1, to: node_2, carries: merged student+marks rows}
+
+triggers:
+  - type: folder_watch
+    spec: "*.csv"
+    description: Trigger when 2 CSV files are placed in inbox
+
+outputs:
+  - name: primary
+    description: Count of students per religion
+    format: csv
+    destination: output/
+    fields:
+      - {name: "Religion", description: "Religion category"}
+      - {name: "Student Count", description: "Number of students"}

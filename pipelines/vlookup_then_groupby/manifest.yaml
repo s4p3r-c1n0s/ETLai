@@ -1,0 +1,12 @@
+name: vlookup_then_groupby
+steps:
+  - atom: vlookup
+    form: passthrough
+  - atom: groupby
+    form: passthrough
+  - atom: rename_columns
+    form: passthrough
+trigger:
+  rules:
+    - type: inbox_files
+      min_files: 2
