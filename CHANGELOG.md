@@ -6,6 +6,7 @@ All notable changes to ETLai are documented here.
 
 ### Changed
 - Detangle phase playbooks from role prompts: phases = task contracts; roles = access policy; Orchestrator = control plane (`workflow/LAYERS.md`)
+- Document Code-first control plane sequence in TECH_DEBT (#11 before #10/#5/#6); demote `ORCHESTRATION.md` to transitional shim
 - Orchestrator owns the user channel for phases 0–1; Business Analyst is a worker (TECH_DEBT #7)
 - `owner_confirmed` may only be set via `Orchestrator.confirm_graph()` after explicit user assent
 - `etlai create` prints BA turn prompts, relays questions, and confirms interactively when a TTY is available

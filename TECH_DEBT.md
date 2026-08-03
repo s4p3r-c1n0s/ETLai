@@ -2,6 +2,26 @@
 
 Known structural issues that don't need fixing today but should be addressed before the codebase grows further.
 
+## Open-item execution sequence
+
+Do **not** implement multi-backend (#5) or Aider step files (#6) before the Code control plane and task packets exist.
+
+```text
+DONE:  #1–#4 runtime fixes
+DONE:  #7 BA mediation (Orchestrator owns user channel)
+DONE:  #8 Layer detangle (phase vs role vs control docs)
+
+NEXT:  #11 Code-first control plane     ← state machine in Python, not LLM/markdown
+ THEN: #10 Task-card router             ← one TaskPacket / one playbook per invoke
+ WITH: #9  Atom Smith firewall          ← parallel with #11/#10; before sensitive create
+ THEN: #5  Multi-backend AI layer       ← workers on packets (LocalLLM/Cloud); CP stays Code
+ THEN: #6  Aider / tool-agnostic UX     ← NEXT_STEP.md generated from TaskSpec
+```
+
+**Rule:** “Local LLM orchestration” means **workers** run on local models. Phase advance, confirmation, gates, firewall, and packet assembly stay on **`CodeBackend`**. `ORCHESTRATION.md` is a transitional Claude Code shim that *calls* Python APIs — it is not the control plane.
+
+---
+
 ## 1. ~~`_execute_step` injection logic — extract into InputResolver~~ RESOLVED v0.5.2
 
 **Fixed in:** `etlai/helpers/input_resolver.py`
@@ -47,18 +67,19 @@ Inbox files are reordered to match declared `inputs[].pattern` before assignment
 
 | Backend | Purpose | Example models |
 |---------|---------|----------------|
-| `CodeBackend` | Deterministic Python, no model | File profiling, gate validators, template fill |
+| `CodeBackend` | Deterministic Python, no model | **Control plane** (phase advance, confirm, gates, firewall, packet build), file profiling, template fill |
 | `EmbeddingBackend` | Vector similarity search | bge-small-en (~33M params) for intent classification, column matching |
-| `LocalLLMBackend` | Small local model with constrained output | Gemma 4 / Qwen 3.6 for slot filling, ambiguity detection |
+| `LocalLLMBackend` | Small local model with constrained output | Gemma 4 / Qwen 3.6 for **worker** tasks: slot filling, ambiguity, separation — never phase routing |
 | `CloudBackend` | Capable cloud model (domain-free data only) | Claude / GPT-4 for atom creation, DAG optimization |
 
 ### Privacy boundary
 
 ```
 LOCAL (user data stays on device):        CLOUD (domain-stripped, safe to send):
-  - File inspection (Code)                  - Atom search (Embedding)
-  - Intent classification (Embedding)       - Atom creation (Cloud)
-  - Slot filling (LocalLLM)                 - DAG optimization (Cloud, optional)
+  - Control plane / phase routing (Code)    - Atom search (Embedding)
+  - File inspection (Code)                  - Atom creation (Cloud)
+  - Intent classification (Embedding)       - DAG optimization (Cloud, optional)
+  - Slot filling (LocalLLM)
   - Ambiguity detection (LocalLLM+Code)
   - User interaction (Code)
   - Requirements assembly (LocalLLM)
@@ -110,7 +131,7 @@ If intent classifier confidence is below threshold or ambiguity detector fires 3
 
 **Dependencies:** `outlines` or `sglang` for constrained decoding, `sentence-transformers` for embeddings, `duckdb` or `polars` for profiling, `ollama` or `llama-cpp-python` for local LLM serving.
 
-**When:** Next major feature cycle. Requires: choosing a local model serving stack, building intent/slot schemas for 8 pipeline types, collecting training examples for embedding calibration. **Prerequisite:** item #10 (`TaskPacket` / one card per invoke) so backends receive task cards, not agent personas.
+**When:** After items **#11** (Code control plane) and **#10** (`TaskPacket` / one card per invoke). Backends must receive task cards from a Python state machine — not agent personas or an LLM orchestrator. Then: choose local model serving stack, build intent/slot schemas for 8 pipeline types, calibrate embeddings.
 
 ---
 
@@ -239,7 +260,7 @@ Claude Code hides files by renaming. For Aider, the equivalent is:
 
 **Dependencies:** Aider 0.50+ (supports conventions files, `/run` command, `.aiderignore`).
 
-**When:** After item #5 (multi-backend layer). The file-driven step protocol is the prerequisite for both Aider support AND the local model decomposition — they share the "each step is self-contained with explicit inputs/outputs" property.
+**When:** After items **#11** + **#10** (Code control plane owns the loop; `TaskSpec` can generate `NEXT_STEP.md`). Multi-backend (#5) may land in parallel once packets exist, but Aider UX should not reintroduce markdown-as-orchestrator.
 
 ---
 
@@ -253,9 +274,9 @@ Orchestrator owns the user channel for phases 0–1. BA is a worker that drafts 
 
 ## 8. ~~Detangle phase playbooks from role prompts~~ RESOLVED
 
-**Fixed in:** `etlai/scaffold/workflow/LAYERS.md`, thinned `agents/*_SYSTEM_PROMPT.md`, purified `phase_0`/`phase_1`, control plane kept in Orchestrator/`ORCHESTRATION.md`.
+**Fixed in:** `etlai/scaffold/workflow/LAYERS.md`, thinned `agents/*_SYSTEM_PROMPT.md`, purified `phase_0`/`phase_1`.
 
-**Rule:** phases = *what* (task I/O); roles = access policy only; Orchestrator = when / user channel / gates. Compose turn packets at runtime — required for small-model / multi-backend (item #5).
+**Rule:** phases = *what* (task I/O); roles = access policy only; **control plane = Code** (see item #11). Compose turn packets at runtime — required for small-model / multi-backend (item #5).
 
 ---
 
@@ -277,7 +298,7 @@ Orchestrator owns the user channel for phases 0–1. BA is a worker that drafts 
 - Deactivate firewall before Gate 5, **or** point Gate 5 at `.business_mapping.json.firewalled` while the firewall is up.
 - Add crash-safe restore (try/finally in CLI + `etlai create --restore-firewall` / status check on startup).
 
-**When:** Before relying on `etlai create` / multi-agent flow for real domain-sensitive pipelines. Related to privacy goals in item #5.
+**When:** Parallel with #11/#10; must land before relying on `etlai create` for domain-sensitive pipelines. Related to privacy goals in item #5.
 
 ---
 
@@ -285,9 +306,11 @@ Orchestrator owns the user channel for phases 0–1. BA is a worker that drafts 
 
 **Status:** Design only; not implemented.
 
+**Depends on:** Item **#11** (Code-first control plane). Packets are built and advanced by Python — not by `ORCHESTRATION.md` or an LLM orchestrator agent.
+
 **Problem:** Layers are detangled in docs (#8) and BA mediation exists (#7), but runtime still thinks in **role bundles** (BA = phases 0–1, Separator = 2–3, …). `build_ba_turn_prompt()` still attaches *both* phase 0 and 1 playbooks. Small local models and item #5 backends need **one invoke = one task card**, with roles optional packaging—not the unit of work.
 
-**Goal:** Control plane builds a `TaskPacket` per invoke and routes it. Role system prompts become optional allowlist overlays; phase/sub-step cards + schemas are mandatory.
+**Goal:** Code control plane builds a `TaskPacket` per invoke and routes it to a worker backend. Role system prompts become optional allowlist overlays; phase/sub-step cards + schemas are mandatory.
 
 ### Target packet
 
@@ -313,21 +336,21 @@ TaskPacket:
 | A3 | Keep phase_2…7 as one card each until measured too large; document max token/complexity budget per card | Avoid premature split |
 | A4 | Machine-readable allowlists (YAML/JSON) derived from today’s role tables | Role `.md` files become human docs or generated from allowlists |
 
-#### B. Orchestrator / control plane
+#### B. Packet API (on top of #11 state machine)
 
 | # | Task | Notes |
 |---|------|--------|
-| B1 | `build_task_packet(task_id, **inputs) -> TaskPacket` | Replaces / generalizes `build_ba_turn_prompt`; one playbook path only |
-| B2 | Phase advance state machine: next `task_id` after artifact + gate | Explicit graph: 0→1→confirm→2→3→…; mediation loops stay on 0/1 only |
-| B3 | `etlai create` / ORCHESTRATION: spawn or run **per task_id**, not per agent persona | “Separator” = two sequential packets (2 then 3) unless one backend call is forced |
+| B1 | `build_task_packet(task_id, **inputs) -> TaskPacket` | Replaces / generalizes `build_ba_turn_prompt`; **exactly one** playbook path |
+| B2 | Wire packets into #11 advance loop | After artifact + gate → next `task_id`; mediation loops stay on 0/1 only |
+| B3 | `etlai create` runs **per `task_id`** | “Separator” = two sequential packets (2 then 3); no persona spawn |
 | B4 | Retry packet = same `task_id` + `gate_errors` in inputs | No re-bundle of sibling phases |
-| B5 | Optional `--task phase_3` for resume/debug | Fits item #6 `NEXT_STEP.md` later |
+| B5 | Optional `--task phase_3` for resume/debug | Feeds item #6 `NEXT_STEP.md` later |
 
 #### C. Deprecate role-as-unit-of-work
 
 | # | Task | Notes |
 |---|------|--------|
-| C1 | Stop instructing workers with multi-phase “you are the Separator” process lists | Already thinned; ensure ORCHESTRATION/CLI don’t re-fat them |
+| C1 | Ensure CLI/docs don’t re-fat multi-phase role essays | Roles already thinned (#8) |
 | C2 | Map legacy role names → list of `task_id`s for UX only | `business_analyst → [phase_0, phase_1]`; packaging, not invoke |
 | C3 | Update HOW_TO_USE_AGENTS / PHASE_DEPENDENCY_GRAPH to show task packets | Avoid teaching “agent owns phases” as the runtime model |
 
@@ -336,7 +359,7 @@ TaskPacket:
 | # | Task | Notes |
 |---|------|--------|
 | D1 | Attach `backend` hint on each `TaskSpec` | Code for inspect/gates/user answers; LocalLLM for slot fill/separation; Cloud for atom create |
-| D2 | `TaskRouter.execute(packet)` stub that today only assembles prompt text | Real backends land in #5; packet shape must not change |
+| D2 | `TaskRouter.execute(packet)` stub that today only assembles prompt text / invokes worker | Real backends land in #5; packet shape must not change |
 | D3 | Constrained-output schema path per task (JSON Schema / Pydantic) | Required for LocalLLM; place next to templates |
 
 #### E. Tests & gates
@@ -349,18 +372,80 @@ TaskPacket:
 
 ### Out of scope (this item)
 
+- Code control-plane state machine ownership (item #11)
 - Implementing LocalLLM/Embedding/Cloud backends (item #5)
-- Aider `NEXT_STEP.md` UX (item #6) — consume `TaskSpec` once this exists
-- Firewall physical hardening (item #9) — do in parallel; router must call firewall around phase_4/5 packets
+- Aider `NEXT_STEP.md` UX (item #6)
+- Firewall physical hardening (item #9)
 
-### Dependency order
+**When:** Immediately after #11 (or overlapping once the Code loop owns create). Before #5 model serving.
+
+---
+
+## 11. Code-first control plane (not an LLM orchestrator)
+
+**Status:** Design complete; not implemented (docs/sequence locked here).
+
+**Problem:** Today’s wording treats `ORCHESTRATION.md` + `ORCHESTRATOR_SYSTEM_PROMPT.md` + `etlai/orchestrator.py` as co-equal “control plane.” That fits a strong Claude Code driver, but **fails if orchestration also runs on small local models**. Prose agents are bad at phase advance, retries, confirmation ownership, and exact packet assembly.
+
+**Target rule:** Control plane = **deterministic Python (`CodeBackend`)**. LLMs execute **worker** task cards only. “Local LLM orchestration” ≠ “local LLM decides the state machine.”
 
 ```text
-#8 LAYERS (done) → #10 TaskSpec + build_task_packet → #9 firewall (parallel OK)
-                 → #5 backends plug into TaskRouter
-                 → #6 NEXT_STEP.md generated from TaskSpec
+User ↔ Code control plane ↔ TaskPacket → worker backend → artifacts → gate (Code)
+                │                              ↑
+                └──── next / retry task_id ────┘
 ```
 
-**When:** Immediately after / overlapping #9; **before** investing in item #5 model serving. Without task packets, multi-backend will re-entangle prompts around agent personas.
+| Concern | Owner | Why |
+|---------|--------|-----|
+| Next `task_id`, loops, max retries | **Code** (`orchestrator.py` → `TaskRouter`) | Small LLMs fail at state machines |
+| Build packet (one playbook + paths + inputs) | **Code** `build_task_packet` (#10) | Exactness; no sibling-phase drift |
+| User channel / `confirm_graph` | **Code** (+ CLI/UI) | Contract, not model judgment |
+| Gates / firewall | **Code** | Already deterministic |
+| Slot fill / separation / atom write | **LocalLLM or Cloud** worker on one packet | Narrow constrained I/O |
+| `ORCHESTRATION.md` / orchestrator system prompt | **Transitional shim only** | Calls Python APIs until `etlai create` owns the loop |
+
+### Hierarchy
+
+1. **Source of truth:** `etlai/orchestrator.py` (+ `TaskSpec` / `TaskRouter` from #10/#11)
+2. **Worker payloads:** phase cards + templates + allowlists
+3. **Transitional drivers:** `ORCHESTRATION.md` / Claude prompts — must *call* APIs, not *be* the state machine
+
+`build_ba_turn_prompt()` is the right *shape* (code builds the packet) but incomplete until #10 (one phase only; generalize beyond BA).
+
+### Work breakdown
+
+| # | Task | Notes |
+|---|------|--------|
+| CP0 | **Non-goal:** LLM agent that freely chooses next phase / sets `owner_confirmed` | Optional later: tiny helper that picks among a **fixed** enum of next-actions, always validated by Code |
+| CP1 | ~~Update `LAYERS.md`: control plane = Python; markdown = shim~~ | Done with this tech-debt lock-in |
+| CP2 | `etlai create` owns the full phase loop in process | Print/relay user Q&A; call `confirm_graph`, `run_gate`, firewall; do not wait for a prose orchestrator |
+| CP3 | State machine API: `current_task_id` / `advance()` / `retry()` | Persisted under `workflow/` (extend `ba_session.json` → `control_session.json`) |
+| CP4 | Demote `ORCHESTRATION.md` to “how to call the CLI/APIs” | No longer the runtime brain; split/tool-agnostic under #6 later |
+| CP5 | Demote `ORCHESTRATOR_SYSTEM_PROMPT.md` | Document Code ownership; Claude shim only if needed |
+| CP6 | Tests: advance/retry/confirm cannot be skipped by worker artifacts alone | Mirror #7 `prepare_gate1` pattern for later phases |
+
+### Interaction with other items
+
+| Item | Relationship |
+|------|----------------|
+| #7 (done) | Mediation APIs stay; become methods on the Code loop |
+| #8 (done) | Layers stay; control-plane *location* corrected to Code |
+| #10 | Implements `TaskPacket` on top of this state machine |
+| #9 | Firewall activate/deactivate called from Code loop around phase_4/5 |
+| #5 | Worker backends only; control plane row stays `CodeBackend` |
+| #6 | `NEXT_STEP.md` / Aider are UIs over the same Code state machine |
+
+### Dependency order (canonical)
+
+```text
+#7 #8 (done)
+  → #11 Code-first control plane
+  → #10 Task-card router (TaskSpec + build_task_packet)
+  → #9  firewall (parallel OK with #11/#10)
+  → #5  multi-backend workers
+  → #6  Aider / tool-agnostic step UX
+```
+
+**When:** Next — before #10 implementation and before any #5 local-model serving work.
 
 ---
