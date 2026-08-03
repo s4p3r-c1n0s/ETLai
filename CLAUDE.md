@@ -94,5 +94,5 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for full details.
 - Tkinter required for first-run config forms
 - Do not commit pipeline runtime data (inbox, staging, processed, rejected, output, config.json)
 - Secrets in `~/.etlai/secrets.env`, never committed
-- The old top-level `logic/`, `runners/`, `sensors/`, `helpers/`, `pipeline.py`, `definitions.py`
-  are legacy — all active code lives under `etlai/`
+- All active code lives under `etlai/`. The scaffold (`etlai/scaffold/`) holds
+  only templates copied into user projects by `etlai init`.
