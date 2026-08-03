@@ -77,10 +77,10 @@ def execute(params_json: str) -> str:
 
 ### Config
 
-Each pipeline's parameters live in a pre-written `config.json`. Single-atom
-pipelines use a flat top-level dict; composite steps read their `step_N` key.
-The registry loads this config at runtime and injects file paths — there is no
-interactive prompt. A missing config raises with a helpful message.
+Each pipeline's parameters live in a pre-written `config.json` under `step_N`
+keys for every step (including `step_0`). Single-atom pipelines have only
+`step_0`. The registry loads this config at runtime and injects file paths —
+there is no interactive prompt. A missing config raises with a helpful message.
 
 ### Manifest (Single Atom)
 
@@ -131,9 +131,11 @@ trigger:
 
 ```json
 {
-  "left_column": "sku",
-  "right_column": "sku",
-  "right_output_columns": ["category", "price"],
+  "step_0": {
+    "left_column": "sku",
+    "right_column": "sku",
+    "right_output_columns": ["category", "price"]
+  },
   "step_1": {
     "expression": "price * quantity",
     "output_column": "revenue"
@@ -151,7 +153,7 @@ trigger:
 }
 ```
 
-**Key:** Step 0 reads **flat top-level** config. Steps 1+ read `step_N` keys.
+**Key:** Every step reads its `step_N` key — including `step_0`.
 
 ---
 
@@ -363,9 +365,10 @@ If an atom knows column names, it can't be reused across pipelines. The same `co
 - Config = business values (what params to pass). May contain sensitive domain logic.
 - Same atom serves multiple pipelines with different configs.
 
-### Why step 0 reads flat config
+### Why every step uses `step_N` (including step_0)
 
-Historical: single-atom pipelines used flat config.json. Composites preserved this for step 0 to avoid breaking existing pipelines. Steps 1+ use `step_N` keys.
+One rule for all pipelines: step N reads `config.json["step_N"]`. Single-atom
+pipelines are just `{ "step_0": { ... } }`. No hybrid flat/nested format.
 
 ### Why the firewall is physical (file rename, not access control)
 

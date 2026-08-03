@@ -110,19 +110,19 @@ git push origin --tags
 
 ### README.md
 
-**Trigger:** Any change to `etlai/` source files (atoms, forms, helpers, CLI)
+**Trigger:** Any change to `etlai/` source files (atoms, helpers, CLI)
 
 **Checks:**
 - Version number in README matches `pyproject.toml`
 - Installation examples are current
-- Feature list reflects shipped atoms/forms/helpers
+- Feature list reflects shipped atoms/helpers
 
 **Action:** Hook warns and prompts:
 ```
 ⚠️  Source code changed but README.md not staged.
    Review README.md for outdated content:
    - Installation instructions
-   - Available atoms/forms
+   - Available atoms
    - Usage examples
    
    Stage README.md if updated, or commit with --no-verify if no docs changes needed.

@@ -10,15 +10,12 @@ Extracted to `InputResolver` class with `resolve()` method. Supports explicit `i
 
 ---
 
-## 2. step_0 flat config special case
+## 2. ~~step_0 flat config special case~~ RESOLVED v0.6.0
 
-**File:** `etlai/registry.py:205-208`
+**Fixed in:** `etlai/registry.py:_execute_step` + `gate_6_manifest_valid.py`
 
-**Problem:** Composite step 0 reads the ENTIRE flat `config.json` top-level dict. Steps 1+ read `step_N` keys. This means config.json has a hybrid structure: top-level params for step 0 + nested `step_1`, `step_2`, etc. for the rest. Gate 6 was updated to not require `step_0` but the asymmetry is confusing.
-
-**Fix:** Unify to always use `step_N` keys (step 0 reads `step_0`). Requires migration of existing pipelines.
-
-**When:** Next major version (breaking change). Needs migration script for existing config.json files.
+Every step — including step 0 — reads `config.json["step_N"]`. Single-atom
+pipelines use only `step_0`. Gate 6 requires `step_0` for all pipelines.
 
 ---
 

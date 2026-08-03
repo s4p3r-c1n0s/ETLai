@@ -171,11 +171,10 @@ steps:
 
 ### config.json
 
-Step 0 reads flat top-level config. Steps 1+ read `step_N` keys:
+Every step reads its `step_N` key (including `step_0`):
 ```json
 {
-  "left_column": "sku",
-  "right_column": "sku",
+  "step_0": {"left_column": "sku", "right_column": "sku"},
   "step_1": {"expression": "price * qty", "output_column": "revenue"},
   "step_2": {"mapping": {"revenue": "Total Revenue"}}
 }

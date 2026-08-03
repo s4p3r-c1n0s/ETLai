@@ -81,18 +81,19 @@ trigger:
 
 ### Single-atom
 
-Flat dict with params the atom expects:
+Params live under `step_0`:
 ```json
 {
-  "left_column": "actual_column_name",
-  "right_column": "actual_column_name",
-  "target_path": "..."
+  "step_0": {
+    "left_column": "actual_column_name",
+    "right_column": "actual_column_name"
+  }
 }
 ```
 
 ### Composite
 
-Per-step dict:
+Per-step dict — every step has a `step_N` key, including `step_0`:
 ```json
 {
   "step_0": {

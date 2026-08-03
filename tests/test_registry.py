@@ -117,8 +117,8 @@ class TestExecuteStep:
         input_csv = pipeline_dir / "inbox" / "data.csv"
         input_csv.write_text("id,name\n1,Alice\n")
 
-        # Pre-written config.json (replaces the old form step)
-        (pipeline_dir / "config.json").write_text("{}")
+        # Pre-written config.json
+        (pipeline_dir / "config.json").write_text(json.dumps({"step_0": {}}))
 
         # Mock atom that succeeds
         atom_mod = MagicMock()
@@ -154,7 +154,7 @@ class TestExecuteStep:
         input_csv = pipeline_dir / "inbox" / "data.csv"
         input_csv.write_text("id,name\n1,Alice\n")
 
-        (pipeline_dir / "config.json").write_text("{}")
+        (pipeline_dir / "config.json").write_text(json.dumps({"step_0": {}}))
 
         atom_mod = MagicMock()
         atom_mod.execute.return_value = '{"success": true, "message": "done"}'
@@ -232,9 +232,8 @@ class TestExecuteStep:
         input_csv = pipeline_dir / "inbox" / "sales.csv"
         input_csv.write_text("sku,qty\nA,5\n")
 
-        # Pre-written config.json (replaces the old form step)
         (pipeline_dir / "config.json").write_text(
-            json.dumps({"left_column": "sku", "right_column": "sku"})
+            json.dumps({"step_0": {"left_column": "sku", "right_column": "sku"}})
         )
 
         # Atom captures the config it receives
@@ -295,7 +294,7 @@ class TestExecuteStep:
         input_csv.write_text("sku,qty\nA,5\n")
 
         (pipeline_dir / "config.json").write_text(
-            json.dumps({"left_column": "sku", "right_column": "sku"})
+            json.dumps({"step_0": {"left_column": "sku", "right_column": "sku"}})
         )
 
         received_config = {}
@@ -356,7 +355,7 @@ class TestExecuteStep:
         input_csv = pipeline_dir / "inbox" / "data.csv"
         input_csv.write_text("sku,qty\nA,5\n")
 
-        (pipeline_dir / "config.json").write_text(json.dumps({"left_column": "sku"}))
+        (pipeline_dir / "config.json").write_text(json.dumps({"step_0": {"left_column": "sku"}}))
 
         received_config = {}
 
@@ -518,10 +517,10 @@ class TestTriggerBuilding:
 
 
 class TestStep0ConfigRegression:
-    """Regression: step 0 in composites should read flat top-level config."""
+    """Regression: every step — including step 0 — reads its step_N key."""
 
-    def test_step_0_reads_flat_config(self, tmp_path, monkeypatch):
-        """Step 0 in a composite pipeline uses the full flat config.json, not step_0 key."""
+    def test_step_0_reads_step_0_key(self, tmp_path, monkeypatch):
+        """Step 0 in a composite pipeline uses config.json['step_0'], not flat top-level."""
         from unittest.mock import MagicMock
         from etlai.registry import _execute_step
         from etlai.helpers.folders import PipelineFolders
@@ -532,11 +531,9 @@ class TestStep0ConfigRegression:
         for d in ["inbox", "staging", "processed", "rejected", "output", "reference"]:
             (pipeline_dir / d).mkdir(parents=True)
 
-        # Write config with params at top level (no step_0 key)
         config_path = pipeline_dir / "config.json"
         config_path.write_text(json.dumps({
-            "left_column": "sku",
-            "right_column": "sku",
+            "step_0": {"left_column": "sku", "right_column": "sku"},
             "step_1": {"expression": "a * b", "output_column": "result"},
         }))
 
@@ -565,9 +562,10 @@ class TestStep0ConfigRegression:
             context=None,
         )
 
-        # Step 0 should have received the flat config params
         assert received_config["left_column"] == "sku"
         assert received_config["right_column"] == "sku"
+        # Must not leak sibling step configs into step 0 params
+        assert "step_1" not in received_config
 
 
 class TestMidPipelineJoinRegression:
@@ -594,8 +592,7 @@ class TestMidPipelineJoinRegression:
 
         config_path = pipeline_dir / "config.json"
         config_path.write_text(json.dumps({
-            "left_column": "sku",
-            "right_column": "sku",
+            "step_0": {"left_column": "sku", "right_column": "sku"},
             "step_1": {"left_column": "sku", "right_column": "sku"},
         }))
 
@@ -658,7 +655,7 @@ class TestMidPipelineJoinRegression:
 
         config_path = pipeline_dir / "config.json"
         config_path.write_text(json.dumps({
-            "left_column": "sku",
+            "step_0": {"left_column": "sku"},
             "step_1": {"expression": "a * b", "output_column": "result"},
         }))
 

@@ -1,20 +1,22 @@
 {
-  "endpoint": "https://newsdata.io/api/1/latest",
-  "method": "GET",
-  "headers": {},
-  "params": {
-    "apikey": "${NEWSDATA_API_KEY}",
-    "language": "en",
-    "category": "technology"
-  },
-  "response_format": "json",
-  "data_path": "results",
-  "field_mapping": {
-    "title": "title",
-    "link": "link",
-    "source": "source_name",
-    "published": "pubDate",
-    "category": "category",
-    "description": "description"
+  "step_0": {
+    "endpoint": "https://newsdata.io/api/1/latest",
+    "method": "GET",
+    "headers": {},
+    "params": {
+      "apikey": "${NEWSDATA_API_KEY}",
+      "language": "en",
+      "category": "technology"
+    },
+    "response_format": "json",
+    "data_path": "results",
+    "field_mapping": {
+      "title": "title",
+      "link": "link",
+      "source": "source_name",
+      "published": "pubDate",
+      "category": "category",
+      "description": "description"
+    }
   }
 }

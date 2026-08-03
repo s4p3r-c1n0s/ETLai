@@ -82,17 +82,8 @@ def validate(pipeline_dir: Path, project_root: Path) -> tuple[bool, list[str]]:
                     f"Last step atom is '{last_atom}', expected 'rename_columns' for rehydration"
                 )
 
-        # Config must have step_N entries (step_0 uses flat top-level config at runtime)
-        if "step_0" not in config and len(steps) > 0:
-            top_level_has_params = any(
-                k for k in config if not k.startswith("step_")
-            )
-            if not top_level_has_params:
-                errors.append(
-                    "config.json missing params for step 0: "
-                    "place step-0 params at the top level (runtime reads flat config for step 0)"
-                )
-        for i in range(1, len(steps)):
+        # Config must have step_N entries for every step (including step_0)
+        for i in range(len(steps)):
             key = f"step_{i}"
             if key not in config:
                 errors.append(f"config.json missing '{key}' for step {i}")
@@ -109,6 +100,12 @@ def validate(pipeline_dir: Path, project_root: Path) -> tuple[bool, list[str]]:
             pass
         if not shipped and not user_path.exists():
             errors.append(f"atom '{atom}' not found (not shipped, not in atoms/)")
+
+        if config and "step_0" not in config:
+            errors.append(
+                "config.json missing 'step_0' "
+                "(single-atom pipelines use step_0 for params)"
+            )
 
     # Inputs validation
     inputs = manifest.get("inputs") or []

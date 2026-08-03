@@ -207,18 +207,13 @@ def _execute_step(
 ):
     """Shared logic for configuring and executing a single step (used by single and composite jobs).
 
-    Config is read directly from config.json: single-job pipelines use the flat
-    top-level dict; composite steps read their `step_N` key. Missing config raises.
+    Config is read from config.json under the `step_N` key for every step
+    (including step_0). Single-atom pipelines use only `step_0`. Missing config raises.
 
     Returns the target_path (output location) for this step.
     """
     existing = load_config(folders)
-
-    # For single-job pipelines, use the flat config. For composites, use step_N key.
-    if is_first and step_index == 0:
-        step_config = existing
-    else:
-        step_config = existing.get(f"step_{step_index}") if existing else None
+    step_config = existing.get(f"step_{step_index}") if existing else None
 
     try:
         config = _load_step_config(step_config)

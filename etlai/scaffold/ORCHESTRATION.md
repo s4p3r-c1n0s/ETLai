@@ -199,8 +199,7 @@ Your job:
    - path: ask
    - min_files
 4. Write config.json to pipelines/{pipeline_name}/config.json with:
-   - Top-level params for step 0
-   - step_1, step_2, etc. for subsequent steps
+   - step_0, step_1, step_2, … for every step (including step 0)
    - ZERO placeholders (everything translated to real values)
 5. Final step MUST be rename_columns (rehydration)
 6. Run: etlai sync
@@ -316,10 +315,12 @@ The Assembler must write config.json in this format:
 
 ```json
 {
-  "left_column": "sku",
-  "right_column": "sku",
-  "left_output_columns": ["name"],
-  "right_output_columns": ["category", "price"],
+  "step_0": {
+    "left_column": "sku",
+    "right_column": "sku",
+    "left_output_columns": ["name"],
+    "right_output_columns": ["category", "price"]
+  },
   "step_1": {
     "expression": "price * quantity",
     "output_column": "revenue"
@@ -337,8 +338,7 @@ The Assembler must write config.json in this format:
 }
 ```
 
-- Top-level params → step 0 (the runtime reads flat config for step 0)
-- `step_N` keys → steps 1, 2, 3, etc.
+- Every step uses a `step_N` key — including `step_0`
 - Zero placeholders — all real business values
 
 ---

@@ -73,7 +73,7 @@ etlai run                           # start Dagster dev server
 - Each manifest wires: atoms + config + triggers + optional inputs (inject_as, input_from)
 - Atoms: `execute(params_json: str) -> str` returning `{"success": bool, "message": str}`
 - Resolution: user `atoms/` → package `etlai.atoms`
-- config.json: step 0 reads flat top-level, steps 1+ read `step_N` keys
+- config.json: every step reads its `step_N` key (including `step_0`)
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for full details.
 

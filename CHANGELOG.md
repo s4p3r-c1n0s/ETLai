@@ -4,6 +4,21 @@ All notable changes to ETLai are documented here.
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-08-03
+
+### Removed
+- Forms concept entirely (`etlai/forms/`, manifest `form:` field, runtime configure step)
+- Tkinter column pickers (`vlookup_column_picker`, `groupby_picker`); params come only from config.json
+- `path: ask` folder picker during `etlai sync` is retained
+
+### Changed
+- **Breaking:** `config.json` always uses `step_N` keys, including `step_0` (no flat top-level step-0 params)
+- Gate 6 requires `step_0` for single-atom and composite pipelines
+- Scaffold example configs (`groupby_religion`, `vlookup_rollnumber`, `newsdata_fetch`) ship under `step_0`
+
+### Fixed
+- TECH_DEBT #2: step_0 flat config special case eliminated
+
 ## [0.5.2] — 2026-08-03
 
 ### Added
