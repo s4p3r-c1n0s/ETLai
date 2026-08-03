@@ -88,32 +88,6 @@ flowchart TB
 | 6 | Wire steps, inputs, triggers; translate placeholders → real config | Assembler | `manifest.yaml`, `config.json` | Phase 7; `etlai sync` / gate 6 |
 | 7 | Ensure final `rename_columns` rehydration | Assembler | Updates final step in manifest + config mapping | Runnable pipeline |
 
-## Artifact dependency edges (what Phase 6 actually reads)
-
-```mermaid
-flowchart LR
-  P1[Phase 1<br/>pipeline_graph.yaml] --> P6[Phase 6 Assemble]
-  P2[Phase 2<br/>business_mapping.json] --> P6
-  P3[Phase 3<br/>atomic_operations.yaml] --> P6
-  P4[Phase 4<br/>match_results.yaml] --> P6
-  P5[Phase 5<br/>atoms/*.py] -.->|if create path| P6
-
-  P1 --> P2
-  P2 --> P3
-  P3 --> P4
-  P4 --> P5
-```
-
-## Is Phase 6 dependent on Phase 2 or Phase 1?
-
-**Both — directly.**
-
-- **Phase 1** → `pipeline_graph.yaml` (inputs/roles, triggers, outputs)
-- **Phase 2** → `business_mapping.json` (placeholder → real column/threshold/source values)
-
-Phase 6 also needs Phase 3 (`atomic_operations.yaml`) and Phase 4 (`match_results.yaml`).
-Sequential control flow is 1→2→3→4→5→6, but the Assembler’s data dependencies fan in from 1, 2, 3, and 4 (and 5 when new atoms were created).
-
 ## Notes
 
 - Phases 0–1 loop with the user; Phases 2–7 do not.
