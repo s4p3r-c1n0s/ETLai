@@ -177,7 +177,10 @@ class TestAgentContext:
         orch.initialize()
         ctx = orch.build_agent_context("business_analyst")
         assert "BUSINESS_ANALYST" in ctx["system_prompt"].name
-        assert len(ctx["writable_paths"]) == 1
+        assert len(ctx["writable_paths"]) == 2
+        writable_names = [p.name for p in ctx["writable_paths"]]
+        assert "pipeline_graph.yaml" in writable_names
+        assert "ba_questions.json" in writable_names
 
     def test_atom_smith_context_excludes_mapping(self, orch):
         orch.initialize()
@@ -196,6 +199,125 @@ class TestAgentContext:
     def test_invalid_role_raises(self, orch):
         with pytest.raises(ValueError, match="Unknown agent role"):
             orch.build_agent_context("unknown_agent")
+
+
+class TestBAMediation:
+    def _write_draft_graph(self, orch, owner_confirmed=False):
+        graph = {
+            "owner_confirmed": owner_confirmed,
+            "name": "test",
+            "description": "A test pipeline",
+            "data_sources": [],
+            "nodes": [],
+            "edges": [],
+            "triggers": [],
+            "outputs": [],
+        }
+        path = orch.workflow_dir / "pipeline_graph.yaml"
+        with open(path, "w") as f:
+            yaml.safe_dump(graph, f)
+        return path
+
+    def test_start_ba_session_writes_state(self, orch):
+        orch.start_ba_session("join sales with catalog")
+        assert orch.ba_session_path.is_file()
+        session = json.loads(orch.ba_session_path.read_text())
+        assert session["user_request"] == "join sales with catalog"
+        assert session["round"] == 0
+        assert session["confirmed_by_orchestrator"] is False
+
+    def test_ba_turn_prompt_forbids_owner_confirmed(self, orch):
+        orch.start_ba_session("build a report")
+        prompt = orch.build_ba_turn_prompt()
+        assert "owner_confirmed: false" in prompt
+        assert "Do NOT set owner_confirmed: true" in prompt
+        assert "do NOT talk to the user" in prompt
+
+    def test_ba_turn_prompt_includes_feedback_and_gate_errors(self, orch):
+        orch.start_ba_session("build a report")
+        prompt = orch.build_ba_turn_prompt(
+            user_feedback="threshold is 15%",
+            gate_errors=["missing triggers"],
+        )
+        assert "threshold is 15%" in prompt
+        assert "missing triggers" in prompt
+
+    def test_begin_ba_turn_increments_round(self, orch):
+        orch.start_ba_session("x")
+        assert orch.begin_ba_turn() == 1
+        assert orch.begin_ba_turn() == 2
+
+    def test_record_and_get_questions(self, orch):
+        orch.start_ba_session("x")
+        orch.record_ba_questions(["What is the join key?", "Daily or weekly?"])
+        qs = orch.get_pending_questions()
+        assert len(qs) == 2
+        assert "join key" in qs[0]
+
+    def test_record_user_answers_clears_questions(self, orch):
+        orch.start_ba_session("x")
+        orch.record_ba_questions(["Q1"])
+        orch.record_user_answers("A1")
+        assert orch.get_pending_questions() == []
+        session = json.loads(orch.ba_session_path.read_text())
+        assert session["answer_history"] == ["A1"]
+        assert not orch.ba_questions_path.exists()
+
+    def test_confirm_graph_sets_flag_and_session(self, orch):
+        orch.start_ba_session("x")
+        self._write_draft_graph(orch, owner_confirmed=False)
+        assert orch.confirm_graph(True) is True
+        graph = yaml.safe_load((orch.workflow_dir / "pipeline_graph.yaml").read_text())
+        assert graph["owner_confirmed"] is True
+        session = json.loads(orch.ba_session_path.read_text())
+        assert session["confirmed_by_orchestrator"] is True
+
+    def test_confirm_graph_false_strips(self, orch):
+        orch.start_ba_session("x")
+        self._write_draft_graph(orch, owner_confirmed=True)
+        assert orch.confirm_graph(False) is False
+        graph = yaml.safe_load((orch.workflow_dir / "pipeline_graph.yaml").read_text())
+        assert graph["owner_confirmed"] is False
+
+    def test_confirm_graph_missing_raises(self, orch):
+        orch.start_ba_session("x")
+        with pytest.raises(FileNotFoundError):
+            orch.confirm_graph(True)
+
+    def test_prepare_gate1_strips_ba_self_confirm(self, orch):
+        orch.start_ba_session("x")
+        self._write_draft_graph(orch, owner_confirmed=True)
+        ready, reason = orch.prepare_gate1()
+        assert ready is False
+        assert "without Orchestrator.confirm_graph" in reason
+        graph = yaml.safe_load((orch.workflow_dir / "pipeline_graph.yaml").read_text())
+        assert graph["owner_confirmed"] is False
+
+    def test_prepare_gate1_ok_after_confirm_graph(self, orch):
+        orch.start_ba_session("x")
+        self._write_draft_graph(orch, owner_confirmed=False)
+        orch.confirm_graph(True)
+        ready, reason = orch.prepare_gate1()
+        assert ready is True
+        assert reason == "ok"
+
+    def test_get_ba_turn_status_ready_for_confirm(self, orch):
+        orch.start_ba_session("x")
+        self._write_draft_graph(orch, owner_confirmed=False)
+        orch.record_ba_questions([])
+        status = orch.get_ba_turn_status()
+        assert status.ready_for_confirm is True
+        assert status.owner_confirmed is False
+
+    def test_prompt_contracts_in_scaffold(self, orch):
+        """BA prompt forbids confirm; Orchestrator prompt requires mediation."""
+        agents = orch._find_agents_dir()
+        ba = (agents / "BUSINESS_ANALYST_SYSTEM_PROMPT.md").read_text()
+        orch_prompt = (agents / "ORCHESTRATOR_SYSTEM_PROMPT.md").read_text()
+        assert "FORBIDDEN" in ba
+        assert "owner_confirmed: true" in ba
+        assert "confirm_graph" in orch_prompt
+        assert "user channel" in orch_prompt.lower()
 
 
 class TestSanitizePipelineName:

@@ -48,29 +48,27 @@ All system prompts written. Each agent knows exactly what it does, what it knows
 
 ### Step 2: Business Analyst Implementation
 
-**Where:** Scaffoldable, user-facing agent.
+**Where:** Scaffoldable worker agent (no user session).
 
 **What it does:**
-1. Read phase_0_dejargon.md
-2. Ask user clarifying questions
-3. Build pipeline_graph.yaml incrementally
-4. Loop with user: "Is this correct?"
-5. On user confirmation: write YAML with `owner_confirmed: true`
+1. Read phase_0_dejargon.md / phase_1_graph.md
+2. **Propose** clarifying questions to `ba_questions.json` (Orchestrator relays)
+3. Build `pipeline_graph.yaml` with `owner_confirmed: false`
+4. Exit turn; Orchestrator loops with user and alone calls `confirm_graph(True)`
 
 **Inputs:**
-- User request
+- User request + Orchestrator-relayed answers (`ba_session.json`)
 
 **Key code to write:**
-- Question generation based on incomplete graph
-- Graph rendering (pretty-print for user)
-- Loop control (keep asking until owner_confirmed)
-- Write pipeline_graph.yaml
+- Question proposals based on incomplete graph
+- Draft graph writes (never set owner_confirmed true)
+- Orchestrator APIs: `start_ba_session`, `build_ba_turn_prompt`, `confirm_graph`, `prepare_gate1`
 
 **Tests needed:**
-- Agent correctly identifies missing fields
-- Agent asks for clarifications
-- Agent writes valid YAML on confirmation
-- Loop terminates on user confirmation
+- BA turn prompt forbids owner_confirmed true
+- confirm_graph alone sets the flag
+- prepare_gate1 strips BA-self-confirmed graphs
+- record_user_answers feeds next turn prompt
 
 ---
 
@@ -210,7 +208,7 @@ Before building, verify:
 ✅ **Artifact Paths** — All agents write to `pipelines/<name>/workflow/` by default
 ✅ **Error Extraction** — Gate output can be parsed for error messages
 ✅ **Retry Logic** — Agents can fix and re-run on gate FAIL
-✅ **User Interaction** — Only Business Analyst talks to user; others are silent
+✅ **User Interaction** — Only Orchestrator talks to user; BA is a worker; others are silent
 
 ## Testing Strategy
 
@@ -263,8 +261,8 @@ To be created:
 
 | Agent | Phases | Loops? | Knows Domain? | Knows Atoms? | Firewall? |
 |-------|--------|--------|---------------|-------------|-----------|
-| **Orchestrator** | N/A | No | No | No | Enforcer |
-| **Business Analyst** | 0-1 | YES | YES | No | — |
+| **Orchestrator** | All | YES (relay + confirm) | No | No | Enforcer |
+| **Business Analyst** | 0-1 | No (worker) | YES | No | — |
 | **Separator** | 2-3 | No | No | No | — |
 | **Atom Smith** | 4-5 | No | No | YES | ❌ BLOCKED |
 | **Assembler** | 6-7 | No | YES | YES | ✅ ALLOWED |

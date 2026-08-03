@@ -14,11 +14,10 @@ User: "Build me a pipeline that takes weekly sales data, enriches it with produc
 
 **What happens internally:**
 
-1. **Business Analyst** (Agent 1) loops with user:
-   - "Let me understand this. When you say 'low-margin', what threshold?"
-   - "Is the catalog updated daily or weekly?"
-   - "Do you need both the detailed transactions AND the summary, or just summary?"
-   - Builds `pipeline_graph.yaml` and gets user confirmation
+1. **Orchestrator** mediates phases 0–1 (owns the user channel):
+   - Spawns Business Analyst as a **worker** that proposes questions + drafts the graph
+   - Relays clarifying questions to you (e.g. threshold, catalog cadence, multi-output needs)
+   - Alone confirms the graph after you say yes (`confirm_graph`)
 
 2. **Separator** (Agent 2) mechanically translates:
    - "sales_data" → "source_1"
@@ -43,7 +42,7 @@ User: "Build me a pipeline that takes weekly sales data, enriches it with produc
    - Adds final `rename_columns` step
    - Runs `etlai sync` to validate
 
-5. **Orchestrator** (Main agent) coordinates all 4 and validates gates.
+5. **Orchestrator** continues routing gates/firewall for agents 2–4.
 
 **Result:**
 ```
@@ -89,36 +88,25 @@ When a Claude Code session opens this repository and you ask it to build a pipel
 
 ## Agent Behavior
 
-### Business Analyst (Phases 0-1)
+### Business Analyst (Phases 0-1) — worker under Orchestrator
 
 ```
-Claude: "I'll help you build a pipeline. Let me understand your request first.
-         You mentioned 'enriching sales data' — where does the enrichment data come from?
-         Is it a permanent lookup table or new data each run?"
+Orchestrator: "I'll help you build a pipeline. A few clarifying questions first…"
+              [relays BA-proposed questions]
 
-User: "It's a permanent product catalog CSV."
+User: [answers]
 
-Claude: "Got it. And you want both a detailed report and a summary?
-         Let me show you what I'm building..."
-
-[Shows draft pipeline_graph.yaml]
-
-Claude: "Is this correct? Any changes needed?"
-
-User: "Yes, we also need to join supplier prices."
-
-Claude: [Updates graph, re-shows]
-
-Claude: "Confirm this is complete and correct?"
+Orchestrator: [BA worker turn revises draft]
+              "Here's the business process graph. Is this complete and correct?"
 
 User: "Yes, perfect."
 
-Claude: [Writes pipeline_graph.yaml with owner_confirmed: true]
+Orchestrator: [confirm_graph(True) — alone sets owner_confirmed]
 ```
 
-**Agent refuses:**
+**BA worker refuses:**
 - ❌ Writing code or atoms
-- ❌ Making technical decisions (it asks user)
+- ❌ Talking to the user directly / setting `owner_confirmed: true`
 - ❌ Producing generic operations (that's Separator's job)
 
 ---
@@ -251,13 +239,16 @@ Orchestrator: [Reports to user]
 
 ### Business Analyst
 ✅ User's request (raw, with jargon)
-✅ User (for questions + confirmation)
+✅ Orchestrator-relayed answers (`ba_session.json`)
 ✅ Phase playbooks
+✅ Draft graph + `ba_questions.json` (write)
+❌ Direct user session / setting `owner_confirmed: true`
+❌ Atoms, code, manifest
 ❌ Other agents' work
 ❌ Technical framework details
 
 ### Separator
-✅ pipeline_graph.yaml (confirmed by user)
+✅ pipeline_graph.yaml (confirmed via Orchestrator.confirm_graph)
 ✅ Phase playbooks
 ✅ Schemas (logical_graph, business_mapping, atomic_operations)
 ❌ User
@@ -303,7 +294,7 @@ The agent system prompts are complete. The orchestration code that spawns agents
 
 - [ ] Orchestrator entry point exists (CLI or Python script)
 - [ ] Orchestrator successfully spawns all 5 agents in sequence
-- [ ] Business Analyst loops with user until graph is confirmed
+- [ ] Orchestrator mediates BA turns and alone confirms the graph
 - [ ] Separator produces three valid YAMLs (zero domain leakage)
 - [ ] Atom Smith finds/creates atoms without seeing business_mapping.json
 - [ ] Gate validators catch errors; agents retry and fix
@@ -328,7 +319,7 @@ A: It writes all 5 to atoms/ with tests. Each must pass the litmus test and gate
 A: No. The Business Analyst should have resolved all ambiguities in phases 0-1. By phase 2, the graph is final.
 
 **Q: What if the final pipeline has bugs?**
-A: The gates validate structure (gates 1-6), not correctness. If config has wrong values or logic is flawed, that's a content error, not a structure error. Encourage the user to start over with clearer requirements (Business Analyst will ask better questions).
+A: The gates validate structure (gates 1-6), not correctness. If config has wrong values or logic is flawed, that's a content error, not a structure error. Encourage the user to start over with clearer requirements (Orchestrator will relay better BA questions).
 
 **Q: Can I manually edit manifest.yaml after assembly?**
 A: Yes, but then you're not using the agent system. If you find yourself manually editing, file an issue so the Assembler can be improved.
@@ -344,7 +335,7 @@ The 5-agent system is your pipeline creation assistant. Each agent does one job 
 
 **When you build a pipeline:**
 1. Describe your business need (user jargon welcome)
-2. Business Analyst clarifies with you
+2. Orchestrator clarifies with you (relaying BA questions)
 3. Three mechanical agents transform your request
 4. Assembler wires it all together
 5. Your pipeline is ready to run

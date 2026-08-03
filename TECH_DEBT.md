@@ -243,69 +243,10 @@ Claude Code hides files by renaming. For Aider, the equivalent is:
 
 ---
 
-## 7. Orchestrator-mediated user channel (BA is not an independent session actor)
+## 7. ~~Orchestrator-mediated user channel (BA is not an independent session actor)~~ RESOLVED
 
-**Status:** Design decision made; not implemented.
+**Fixed in:** `etlai/orchestrator.py` (BA turn APIs + `confirm_graph` / `prepare_gate1`), `etlai/cli.py` (`etlai create` mediation), scaffold agent prompts + phase playbooks, docs.
 
-**Problem:** Phases 0–1 currently treat the Business Analyst as an independent entity that talks to the user directly while the Orchestrator waits. That splits session ownership: BA owns the conversational loop and self-sets `owner_confirmed`, while Orchestrator still owns gates/retries/routing. In CLI and subagent runtimes there is one user channel — so either BA *is* the session (Orchestrator isn’t orchestrating), or handoff is fragile. It also doesn’t scale when later phases need rare user questions (e.g. inbox filename patterns).
+Orchestrator owns the user channel for phases 0–1. BA is a worker that drafts `pipeline_graph.yaml` with `owner_confirmed: false` and proposes questions in `ba_questions.json`. Only `Orchestrator.confirm_graph(True)` may set confirmation after explicit user assent. `prepare_gate1()` strips BA-self-confirmed graphs.
 
-**Target design:** Orchestrator owns the user channel and phase state machine. BA remains a domain specialist (propose questions, draft/revise `pipeline_graph.yaml`) but does not hold a direct user session. Orchestrator alone sets `owner_confirmed` after explicit user assent, then runs gate 1.
-
-```
-Current:  User ↔ BA (independent loop) → artifact → Orchestrator (gate)
-Target:   User ↔ Orchestrator ↔ BA (worker turns) → Orchestrator sets confirmed → gate
-```
-
-### What needs changing
-
-#### Control / code
-
-| Area | Change |
-|------|--------|
-| `etlai/orchestrator.py` | Add BA turn API: accept user request/feedback → invoke BA context → return proposed questions + draft graph diff; add `confirm_graph(user_said_yes)` that writes `owner_confirmed: true` (BA must not write this flag). Track phase-0/1 loop state (round count, pending questions). |
-| `etlai create` / CLI wiring | Orchestrator drives the interactive loop for phases 0–1 (print BA questions, collect answers, re-invoke BA). After confirmation, run gate 1 and continue Separator → … as today. |
-| Gate / retry path | On gate 1 FAIL, Orchestrator re-prompts BA with validator errors (no user loop inside BA). Optionally surface a short summary to the user if retries exhaust. |
-| Future rare questions (post–phase 1) | Same channel: Orchestrator may ask user; never spawn Separator/Atom Smith/Assembler as user-facing agents. |
-
-#### Agent contracts (scaffold prompts)
-
-| File | Change |
-|------|--------|
-| `etlai/scaffold/agents/ORCHESTRATOR_SYSTEM_PROMPT.md` | Own user I/O for phases 0–1; present BA questions/graph; collect answers; set `owner_confirmed` only on explicit yes; do not invent domain answers. Update “Loops with User?” to YES for confirmation/Q&A relay (still NO for domain decisions). |
-| `etlai/scaffold/agents/BUSINESS_ANALYST_SYSTEM_PROMPT.md` | Remove direct user loop. Inputs: user request + Orchestrator-relayed answers. Outputs: clarifying questions (structured) and/or updated `pipeline_graph.yaml` with `owner_confirmed: false`. Explicitly forbid setting `owner_confirmed: true`. |
-| `etlai/scaffold/ORCHESTRATION.md` | Replace “BA interacts with the user directly” with mediated turn protocol; document confirmation as Orchestrator step before gate 1. |
-| `etlai/scaffold/HOW_TO_USE_AGENTS.md` | User-facing flow: talk to Orchestrator/`etlai create`; BA works behind it. |
-| `etlai/scaffold/workflow/phase_0_dejargon.md` | Questions are *proposed* for Orchestrator to ask, not asked by BA in-session. |
-| `etlai/scaffold/workflow/phase_1_graph.md` | Remove “BA sets `owner_confirmed`”; confirmation is Orchestrator-owned after user yes. |
-| `etlai/scaffold/workflow/CLAUDE.md` + `etlai/scaffold/CLAUDE.md` | Agent table: Orchestrator relays user Q&A; BA does not loop with user as session owner. |
-
-#### Docs / architecture tables
-
-| File | Change |
-|------|--------|
-| `ARCHITECTURE.md` | Agent table: Orchestrator loops with user (relay only); BA loops with user = No (specialist turns only). Document confirmation ownership. |
-| `docs/AGENT_IMPLEMENTATION_PLAN.md` | BA section: no Interact-with-user tool; Orchestrator phase owns loop + `owner_confirmed`. |
-| `docs/AGENT_BUILD_ROADMAP.md` | Same; “Only Business Analyst talks to user” → “Only Orchestrator talks to user; BA is invoked as worker”. |
-| `docs/PHASE_DEPENDENCY_GRAPH.md` | Show User ↔ Orchestrator, Orchestrator → BA (not User ↔ BA). |
-| `README.md` / `CHANGELOG.md` | When implemented: describe mediated BA under pipeline creation. |
-
-#### Tests
-
-| Area | Change |
-|------|--------|
-| `tests/test_orchestrator.py` | Cover: BA turn without `owner_confirmed`; `confirm_graph` sets flag; BA prompt/context never instructed to confirm; gate 1 retry does not require BA↔user session. |
-| New contract tests (optional) | Snapshot/assert BA system prompt forbids `owner_confirmed: true`; Orchestrator prompt requires mediated confirmation. |
-
-### What stays the same
-
-- BA still owns domain understanding and graph content (sources, nodes, edges, triggers).
-- Separator / Atom Smith / Assembler stay non-interactive.
-- Firewall, gate validators, and artifact schemas unchanged.
-- Phase ordering and artifact paths unchanged.
-
-### Interaction with other tech debt
-
-- **Item #5 (multi-backend):** Decomposed BA steps (slot fill, ambiguity, user answers) already assume a Code/UI “User Answers” step outside the model — aligns with Orchestrator-owned channel; implement mediation before or with that decomposition.
-- **Item #6 (Aider / NEXT_STEP.md):** File-driven flow should describe Orchestrator/`etlai create` as the interviewer; BA role in `NEXT_STEP.md` = produce questions + draft graph, not “interview the user” as session owner.
-
-**When:** Before hardening `etlai create` as the primary user entrypoint (before or alongside item #6 step protocol). Do not ship a polished interactive create UX while BA still owns the session.
+---

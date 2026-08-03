@@ -29,43 +29,69 @@ Tell the user: "Creating pipeline `{pipeline_name}`. I'll ask you some questions
 
 ---
 
-## Step 2: Spawn Business Analyst (Phases 0-1)
+## Step 2: Mediate Business Analyst (Phases 0-1)
 
-Use the **Agent tool** to spawn a subagent with this prompt:
+**You own the user channel.** BA is a worker turn — it does not talk to the user.
 
-```
-You are the Business Analyst agent for ETLai pipeline creation.
-
-Read the system prompt at: {orch.build_agent_context("business_analyst")["system_prompt"]}
-Read the phase playbooks at:
-- workflow/phase_0_dejargon.md
-- workflow/phase_1_graph.md
-
-The user's request is: "{user_request}"
-
-Your job:
-1. Ask the user clarifying questions about their data pipeline needs
-2. Build a pipeline_graph.yaml incrementally
-3. Show the user the graph after each update
-4. Loop until user confirms: "Is this complete and correct?"
-5. On confirmation, write the YAML to: {workflow_dir}/pipeline_graph.yaml
-   with owner_confirmed: true
-
-Write ONLY pipeline_graph.yaml. Do not proceed to other phases.
+```python
+orch.start_ba_session(user_request)
 ```
 
-**IMPORTANT:** The BA agent interacts with the user directly. Wait for it to complete and produce `pipeline_graph.yaml`.
+Tell the user: "Creating pipeline `{pipeline_name}`. I'll ask you some questions to understand what you need."
+
+### BA turn loop
+
+```python
+while True:
+    orch.begin_ba_turn()
+    prompt = orch.build_ba_turn_prompt(
+        user_feedback=last_answers,  # None on first turn
+    )
+    # Spawn BA worker with `prompt` (Agent tool). BA writes:
+    #   - pipeline_graph.yaml with owner_confirmed: false
+    #   - ba_questions.json (questions list; empty when ready to confirm)
+
+    status = orch.get_ba_turn_status()
+    if status.questions:
+        # Relay questions to the USER (you ask; BA does not)
+        last_answers = "<user replies>"
+        orch.record_user_answers(last_answers)
+        continue
+
+    # No pending questions → present draft graph to user
+    # Ask: "Is this business process graph complete and correct?"
+    if user_said_yes:
+        orch.confirm_graph(True)  # ONLY Orchestrator sets owner_confirmed
+        break
+    else:
+        last_answers = "<user feedback>"
+        orch.record_user_answers(last_answers)
+```
+
+**FORBIDDEN:** Letting BA set `owner_confirmed: true` or talk to the user directly.
+
+BA worker spawn prompt skeleton:
+
+```
+{orch.build_ba_turn_prompt(user_feedback=...)}
+```
 
 ---
 
 ## Step 3: Validate Gate 1
 
 ```python
+ready, reason = orch.prepare_gate1()
+if not ready:
+    raise RuntimeError(reason)
+
 result = orch.run_gate(1)
 if not result:
-    # Send errors back to BA agent for fixing (max 3 retries)
+    # Re-prompt BA worker with gate errors (still no user session inside BA)
+    fix_prompt = orch.build_ba_turn_prompt(gate_errors=result.errors)
+    # ... BA fixes graph with owner_confirmed: false ...
+    # Re-confirm with user if needed, then orch.confirm_graph(True)
     print(f"Gate 1 FAIL: {result.error_summary()}")
-    # Re-prompt BA with: "Fix these errors in pipeline_graph.yaml: {result.errors}"
 ```
 
 Only proceed when gate 1 passes.

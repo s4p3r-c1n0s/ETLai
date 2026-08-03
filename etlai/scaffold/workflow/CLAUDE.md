@@ -7,7 +7,7 @@ This folder governs the 7-phase pipeline creation process. Phases are **strictly
 | Phase | Name | Artifact Produced | Gate |
 |-------|------|-------------------|------|
 | 0 | Dejargon | `pipeline_graph.yaml` (partial) | User's request fully expanded |
-| 1 | Business Process Graph | `pipeline_graph.yaml` (complete) | `owner_confirmed: true` set by user |
+| 1 | Business Process Graph | `pipeline_graph.yaml` (complete) | `owner_confirmed: true` via Orchestrator.confirm_graph |
 | 2 | Separation | `logical_graph.yaml` + `business_mapping.json` | Zero domain terms in logical_graph |
 | 3 | Atomize | `atomic_operations.yaml` | One verb per entry, valid DAG |
 | 4 | Match | `match_results.yaml` | Every operation mapped |
@@ -17,7 +17,7 @@ This folder governs the 7-phase pipeline creation process. Phases are **strictly
 
 ## Sequencing Rules
 
-1. Phases 0 and 1 LOOP with the user. Do not exit Phase 1 until the user explicitly confirms the graph.
+1. Phases 0 and 1 LOOP with the user **through the Orchestrator**. The Business Analyst is a worker (drafts graph + proposes questions); only the Orchestrator talks to the user and sets `owner_confirmed` via `confirm_graph`. Do not exit Phase 1 until the user explicitly confirms the graph to the Orchestrator.
 2. Phase 2 onward does NOT loop back to the user. All ambiguity must be resolved in Phases 0-1.
 3. Each phase reads its detailed instructions from `workflow/phase_N_<name>.md`.
 4. Each phase writes its artifact to the pipeline's working directory: `pipelines/<name>/workflow/`.
@@ -87,7 +87,7 @@ Every artifact MUST conform to its template schema. Missing required fields = in
 
 The 7-phase workflow can be executed manually (one LLM session doing all phases) or via the **5-agent system** where specialized agents handle specific phases:
 
-- Phases 0-1 → Business Analyst agent (loops with user)
+- Phases 0-1 → Business Analyst worker (Orchestrator mediates user Q&A and confirmation)
 - Phases 2-3 → Separator agent (mechanical, no user interaction)
 - Phases 4-5 → Atom Smith agent (firewalled from business_mapping.json)
 - Phases 6-7 → Assembler agent (wires final pipeline)

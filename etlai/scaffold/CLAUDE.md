@@ -50,7 +50,7 @@ Pipelines are NOT created ad-hoc. Every pipeline goes through this mandatory seq
 
 - Phases are **strictly sequential**. No skipping.
 - Each phase produces an artifact file. The next phase cannot start until the artifact exists AND its gate validator passes.
-- Phases 0-1 loop with the user (ask questions until the graph is complete).
+- Phases 0-1 loop with the user **via the Orchestrator** (BA proposes questions; Orchestrator confirms).
 - Phases 2-7 do NOT loop back to the user. All ambiguity is resolved in 0-1.
 - Gate validators are deterministic scripts. If they return FAIL, fix errors before proceeding.
 
@@ -88,10 +88,10 @@ For complex pipelines, a 5-agent system automates the 7-phase workflow:
 
 | Agent | Phases | Role |
 |-------|--------|------|
-| **Orchestrator** | All | Routes work, enforces firewall, validates gates |
-| **Business Analyst** | 0-1 | Loops with user until graph is confirmed |
-| **Separator** | 2-3 | Strips domain terms, builds generic DAG |
-| **Atom Smith** | 4-5 | Finds/creates atoms (firewalled from business data) |
+| **Orchestrator** | All | Owns user channel; relays BA Q&A; confirms graph; gates/firewall |
+| **Business Analyst** | 0-1 | Worker turns (no user session); drafts graph + proposes questions |
+| **Separator** | 2-3 | Mechanical; strips domain; builds generic DAG |
+| **Atom Smith** | 4-5 | Firewalled from business data; finds/creates atoms |
 | **Assembler** | 6-7 | Wires manifest + config with real values |
 
 Agent system prompts: `agents/`

@@ -12,12 +12,13 @@ Build 5 specialized agents that collaborate through an orchestrator to create ET
 
 **Responsibilities:**
 1. Create `pipelines/<name>/workflow/` directory for artifacts
-2. Spawn Business Analyst for Phases 0-1
-3. On gate pass: spawn Separator for Phases 2-3
-4. On gate pass: spawn Atom Smith for Phases 4-5 (with firewall enforcement)
-5. On gate pass: spawn Assembler for Phases 6-7
-6. On gate FAIL: retry agent with error feedback (up to 3 times)
-7. On final success: print completion message
+2. Spawn Business Analyst worker turns for Phases 0-1 (Orchestrator mediates user Q&A)
+3. Alone confirm graph via `confirm_graph` after user assent; `prepare_gate1` then gate 1
+4. On gate pass: spawn Separator for Phases 2-3
+5. On gate pass: spawn Atom Smith for Phases 4-5 (with firewall enforcement)
+6. On gate pass: spawn Assembler for Phases 6-7
+7. On gate FAIL: retry agent with error feedback (up to 3 times)
+8. On final success: print completion message
 
 **Tools Available:**
 - File read/write (all artifacts in `pipelines/<name>/workflow/`)
@@ -32,40 +33,42 @@ Build 5 specialized agents that collaborate through an orchestrator to create ET
 
 ---
 
-### Phase 2: Business Analyst Agent (Subagent — Phases 0-1)
+### Phase 2: Business Analyst Agent (Subagent worker — Phases 0-1)
 
-**Purpose:** Understand user's business request and produce a complete, user-confirmed process graph.
+**Purpose:** Understand user's business request and produce a complete process graph draft. Does **not** own the user session.
 
 **Input:**
 - User's raw request (text, may be in domain jargon)
+- Orchestrator-relayed answers from prior turns
 
 **Output:**
-- `pipelines/<name>/workflow/pipeline_graph.yaml` — complete business process graph
-- `owner_confirmed: true` in the YAML
+- `pipelines/<name>/workflow/pipeline_graph.yaml` — draft graph with **`owner_confirmed: false`**
+- `pipelines/<name>/workflow/ba_questions.json` — clarifying questions for Orchestrator to relay (empty when ready to confirm)
 
 **System Prompt Components (from scaffold):**
-1. `workflow/phase_0_dejargon.md` — How to expand jargon, ask clarifying questions
+1. `workflow/phase_0_dejargon.md` — How to expand jargon, propose clarifying questions
 2. `workflow/phase_1_business_graph.md` — How to build nodes, edges, data sources, triggers, outputs
 3. `workflow/templates/pipeline_graph.yaml` — Schema and examples
-4. Instruction: **Loop with the user.** Ask for confirmation after each step. Do NOT exit Phase 1 until the user says "yes, this graph is complete and correct."
+4. Instruction: **No direct user interaction.** Propose questions; never set `owner_confirmed: true`.
 
 **Tools:**
-- Read: phase playbooks, schema template
-- Write: `pipeline_graph.yaml` (multiple iterations)
-- Interact: ask user clarifying questions and for confirmation
+- Read: phase playbooks, schema template, `ba_session.json`
+- Write: `pipeline_graph.yaml`, `ba_questions.json`
 
-**Loop Condition:**
+**Orchestrator loop (owns user channel):**
 ```
-while owner_confirmed != true:
-  - Show current graph to user
-  - Ask: "Is this complete and correct?"
-  - On YES → set owner_confirmed: true and exit
-  - On feedback → refine and loop
+orch.start_ba_session(request)
+while not confirmed_by_orchestrator:
+  - orch.build_ba_turn_prompt(...) → spawn BA worker
+  - Relay ba_questions to user OR present draft for confirmation
+  - On YES → orch.confirm_graph(True)
+  - On feedback → orch.record_user_answers(...)
+orch.prepare_gate1() → run gate 1
 ```
 
 **Exit Criteria:**
-- `pipeline_graph.yaml` exists
-- `owner_confirmed: true` is set
+- `pipeline_graph.yaml` exists with domain content complete
+- Orchestrator has set `owner_confirmed: true` via `confirm_graph`
 - Ready for gate_1 validation
 
 ---
@@ -243,8 +246,9 @@ while owner_confirmed != true:
 ```
 User Request
     │
-    ├─→ Business Analyst
-    │   └─→ pipeline_graph.yaml (owner_confirmed: true)
+    ├─→ Business Analyst (worker turns)
+    │   └─→ pipeline_graph.yaml (owner_confirmed: false) + ba_questions.json
+    │       └─→ Orchestrator.confirm_graph(True) after user yes
     │
     ├─→ Separator
     │   └─→ logical_graph.yaml
@@ -297,7 +301,7 @@ User Request
 ## Implementation Order
 
 1. **Build Orchestrator** — The router and state manager
-2. **Build Business Analyst** — Entry point, user interaction
+2. **Build Business Analyst** — Worker turns; Orchestrator owns user interaction
 3. **Build Separator** — Mechanical transformation
 4. **Build Atom Smith** — Validation + creation
 5. **Build Assembler** — Final wiring

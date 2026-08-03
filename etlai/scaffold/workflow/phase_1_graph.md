@@ -2,15 +2,17 @@
 
 ## Purpose
 
-Build the complete data flow graph: what goes in, what operations happen in what order, and what comes out. Loop with the user until every node and edge is defined with zero unknowns.
+Build the complete data flow graph: what goes in, what operations happen in what order, and what comes out. Produce a draft for the Orchestrator to confirm with the user until every node and edge is defined with zero unknowns.
 
 ## Input
 
 - Partial `pipeline_graph.yaml` from Phase 0 (expanded description, initial data sources)
+- Orchestrator-relayed user answers (`ba_session.json` / turn feedback)
 
 ## Output
 
-- Complete `pipeline_graph.yaml` with all sections filled, `owner_confirmed: true`
+- Complete `pipeline_graph.yaml` with all sections filled and **`owner_confirmed: false`**
+- `ba_questions.json` — remaining clarifying questions, or `{"questions": []}` when ready for Orchestrator to ask the user to confirm
 
 ## Process
 
@@ -20,8 +22,8 @@ Build the complete data flow graph: what goes in, what operations happen in what
 4. Draw edges: which node feeds into which. Verify no orphan nodes.
 5. Define triggers: what starts this pipeline running.
 6. Define output: what the final result looks like, where it goes.
-7. Present the complete graph to the user. Ask: "Is this complete and correct?"
-8. Set `owner_confirmed: true` ONLY after the user explicitly says yes.
+7. Write the complete draft with `owner_confirmed: false`. If gaps remain, write questions to `ba_questions.json` for the Orchestrator to relay. If complete, write an empty questions list so the Orchestrator can ask: "Is this complete and correct?"
+8. **Do not** set `owner_confirmed: true`. The Orchestrator calls `confirm_graph(True)` only after explicit user yes.
 
 ## Done When
 
@@ -32,25 +34,24 @@ Build the complete data flow graph: what goes in, what operations happen in what
   - No field contains "unknown", "tbd", "tbc", or empty string
   - Triggers section is filled
   - Output section is filled
-  - User has explicitly confirmed (`owner_confirmed: true`)
+  - Draft is ready for Orchestrator-mediated confirmation (`owner_confirmed` still false until then)
 
 ## DO
 
-- Ask the user about EVERY gap: "You mentioned X arrives weekly — what columns does it contain?"
-- Verify field types: "Is quantity always a whole number or can it have decimals?"
-- Confirm the trigger: "This runs every Monday at 8am — correct?"
-- Verify data roles: "The product catalog stays the same across runs — it's reference data, correct?"
+- Propose questions about EVERY gap for the Orchestrator to ask
+- Verify field types via proposed questions
+- Confirm trigger and data roles via Orchestrator-relayed answers
 - Number nodes sequentially (node_1, node_2) to show execution order
-- Verify the chain: "So node_1's output feeds into node_2's input — correct?"
 
 ## DO NOT
 
-- Set `owner_confirmed: true` without explicit user confirmation
-- Leave any field empty or placeholder — if unknown, ask
-- Assume column names or types — ask the user to confirm
+- Set `owner_confirmed: true` — only Orchestrator.confirm_graph may do that
+- Ask the user directly — you have no user session
+- Leave any field empty or placeholder — if unknown, propose a question
+- Assume column names or types — wait for relayed confirmation
 - Proceed to Phase 2 with any "tbd" entries
 - Add operations the user didn't ask for (don't optimize prematurely)
-- Guess data formats — ask "is it CSV, JSON, or something else?"
+- Guess data formats — propose "is it CSV, JSON, or something else?"
 
 ## Gap Detection Questions
 
@@ -63,18 +64,18 @@ When reviewing the graph for completeness, check:
 5. **Trigger gaps:** Is it clear WHEN and HOW this pipeline starts?
 6. **Error gaps:** What happens if input data is missing or malformed? (note in business_rules)
 
-## Looping Rules
+## Looping Rules (Orchestrator-mediated)
 
-- Keep asking until ALL gaps are filled
-- Present the graph summary after each round of questions
-- Maximum 5 question rounds — if still incomplete after 5, present what's missing as a bulleted list and ask the user to fill it
-- Accept "I don't care / use default" as valid answers for non-critical fields (e.g., output destination defaults to output/ folder)
+- Orchestrator invokes BA turns until gaps are filled (max 5 rounds)
+- Orchestrator presents the graph summary after each round
+- If still incomplete after 5 rounds, Orchestrator presents what's missing as a bulleted list
+- Accept "I don't care / use default" (relayed) as valid for non-critical fields
 
 ## Gate Validator
 
-After user confirms, run:
+After Orchestrator.confirm_graph(True), run:
 ```bash
 python workflow/validators/gate_1_graph_complete.py pipelines/<name>/
 ```
 
-Must return PASS before proceeding to Phase 2. Fix any structural errors the validator reports.
+Must return PASS before proceeding to Phase 2. Fix any structural errors the validator reports (BA fix turns keep `owner_confirmed: false` until Orchestrator re-confirms if needed).

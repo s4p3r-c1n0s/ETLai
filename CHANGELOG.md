@@ -4,6 +4,14 @@ All notable changes to ETLai are documented here.
 
 ## [Unreleased]
 
+### Changed
+- Orchestrator owns the user channel for phases 0–1; Business Analyst is a worker (TECH_DEBT #7)
+- `owner_confirmed` may only be set via `Orchestrator.confirm_graph()` after explicit user assent
+- `etlai create` prints BA turn prompts, relays questions, and confirms interactively when a TTY is available
+
+### Added
+- BA mediation APIs: `start_ba_session`, `build_ba_turn_prompt`, `record_ba_questions`, `record_user_answers`, `confirm_graph`, `prepare_gate1`
+
 ## [0.6.0] — 2026-08-03
 
 ### Removed

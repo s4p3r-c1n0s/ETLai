@@ -235,11 +235,13 @@ business_mapping.json ──► Separator produces it
 
 | Agent | Phases | Loops with User? | Knows Domain? | Knows Atoms? |
 |-------|--------|------------------|---------------|-------------|
-| Orchestrator | All | No | No | No |
-| Business Analyst | 0-1 | YES | YES | No |
+| Orchestrator | All | YES (relay Q&A + confirmation only) | No | No |
+| Business Analyst | 0-1 | No (worker turns; Orchestrator mediates) | YES | No |
 | Separator | 2-3 | No | No | No |
 | Atom Smith | 4-5 | No | No | YES |
 | Assembler | 6-7 | No | YES | YES |
+
+**Confirmation ownership:** Only `Orchestrator.confirm_graph(True)` may set `owner_confirmed: true` on `pipeline_graph.yaml` after explicit user assent. BA always writes `owner_confirmed: false`.
 
 ### Gate Validators
 
@@ -260,7 +262,11 @@ Deterministic scripts that validate artifacts between phases:
 from etlai.orchestrator import Orchestrator
 
 orch = Orchestrator(project_root=Path("."), pipeline_name="sales_recon")
-orch.initialize()                    # create dirs
+orch.initialize()
+orch.start_ba_session("join sales with catalog")
+orch.build_ba_turn_prompt()          # BA worker turn instructions
+orch.confirm_graph(True)             # only Orchestrator may confirm
+orch.prepare_gate1()                 # enforce confirmation ownership
 orch.run_gate(1)                     # validate, returns GateResult
 orch.activate_firewall()             # hide business_mapping.json
 orch.build_agent_context("atom_smith")  # scoped file list

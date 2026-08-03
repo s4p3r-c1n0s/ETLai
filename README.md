@@ -135,7 +135,8 @@ phases with deterministic gate validators between each:
 
 | Agent | Role |
 |-------|------|
-| Business Analyst | Loops with user to capture pipeline requirements |
+| Orchestrator | Coordinates agents; owns user channel for BA mediation |
+| Business Analyst | Worker: drafts requirements graph; proposes questions (no user session) |
 | Separator | Strips domain terms, produces generic operation graph |
 | Atom Smith | Matches/creates atoms (firewalled from business data) |
 | Assembler | Wires manifest + config with real business values |

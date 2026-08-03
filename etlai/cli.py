@@ -328,32 +328,92 @@ def cmd_create(args):
 
     orch = Orchestrator(project_root=project_root, pipeline_name=pipeline_name)
     workflow_dir = orch.initialize()
+    orch.start_ba_session(user_request)
 
     print(f"Pipeline: {pipeline_name}")
     print(f"Workflow dir: {workflow_dir}")
     print(f"Request: {user_request}")
     print()
 
-    # Phase 0-1: Business Analyst
+    # Phase 0-1: Orchestrator mediates; BA is a worker (no direct user session)
     print("=" * 60)
-    print("PHASE 0-1: Business Analyst")
+    print("PHASE 0-1: Business Analyst (Orchestrator-mediated)")
     print("=" * 60)
     context = orch.build_agent_context("business_analyst")
     print(f"  System prompt: {context['system_prompt']}")
-    print(f"  Output: {context['writable_paths'][0]}")
+    print(f"  Draft graph:   {context['writable_paths'][0]}")
+    print(f"  Questions out: {context['writable_paths'][1]}")
     print()
-    print("  Waiting for Business Analyst to produce pipeline_graph.yaml...")
-    print("  (In Claude Code: the BA agent loops with the user until confirmed)")
+    print("  User channel: YOU (Orchestrator / this CLI) talk to the user.")
+    print("  BA worker: proposes clarifying questions + drafts pipeline_graph.yaml")
+    print("  with owner_confirmed: false. Only Orchestrator.confirm_graph() may confirm.")
+    print()
+    print("  --- BA turn prompt (give this to the BA worker) ---")
+    print(orch.build_ba_turn_prompt())
+    print("  --- end BA turn prompt ---")
     print()
 
-    # Gate 1
-    gate1 = orch.run_gate(1)
-    if not gate1:
-        print(f"  GATE 1: FAIL")
-        print(gate1.error_summary())
-        print("  Fix errors in pipeline_graph.yaml and re-run 'etlai create'")
+    status = orch.get_ba_turn_status()
+    if status.questions:
+        print("  Pending clarifying questions for the user:")
+        for i, q in enumerate(status.questions, 1):
+            print(f"    {i}. {q}")
+        print("  Collect answers, then: orch.record_user_answers(...); next BA turn.")
+        print()
+
+    if status.graph is not None and not status.confirmed_by_orchestrator:
+        print("  Draft graph present. Present it to the user, then confirm:")
+        if sys.stdin.isatty() and not getattr(args, "no_confirm", False):
+            reply = input("  Is this business process graph complete and correct? [y/N]: ").strip()
+            yes = reply.lower() in ("y", "yes")
+            if orch.confirm_graph(yes):
+                print("  Confirmed via Orchestrator.confirm_graph().")
+            else:
+                print("  Not confirmed. Relay feedback to BA and re-run.")
+                sys.exit(1)
+        else:
+            print("  (Non-interactive) Call Orchestrator.confirm_graph(True) after user assent.")
+            print("  Or re-run with a TTY to confirm interactively.")
+            ready, reason = orch.prepare_gate1()
+            if not ready:
+                print(f"  BLOCKED before gate 1: {reason}")
+                sys.exit(1)
+    print()
+
+    ready, reason = orch.prepare_gate1()
+    if not ready:
+        print(f"  BLOCKED before gate 1: {reason}")
         sys.exit(1)
-    print(f"  GATE 1: PASS")
+
+    # Gate 1 (with Orchestrator-owned retry prompt for BA — no user loop inside BA)
+    gate1 = orch.run_gate(1)
+    retries = 0
+    while not gate1 and retries < Orchestrator.MAX_RETRIES:
+        retries += 1
+        print(f"  GATE 1: FAIL (retry {retries}/{Orchestrator.MAX_RETRIES})")
+        print(gate1.error_summary())
+        print("  --- BA fix prompt (gate errors; still no user session) ---")
+        print(orch.build_ba_turn_prompt(gate_errors=gate1.errors))
+        print("  --- end BA fix prompt ---")
+        print("  Apply BA fixes to pipeline_graph.yaml, keep owner_confirmed via confirm_graph only.")
+        if sys.stdin.isatty() and not getattr(args, "no_confirm", False):
+            input("  Press Enter after BA has fixed the graph...")
+            # Re-confirm if strip happened; otherwise re-run gate
+            session_ok, _ = orch.prepare_gate1()
+            if not session_ok:
+                reply = input("  Re-confirm graph with user? [y/N]: ").strip()
+                if not orch.confirm_graph(reply.lower() in ("y", "yes")):
+                    sys.exit(1)
+            gate1 = orch.run_gate(1)
+        else:
+            print("  Fix errors and re-run 'etlai create' after BA turn + confirm_graph.")
+            sys.exit(1)
+
+    if not gate1:
+        print("  GATE 1: FAIL after max retries — escalate to user.")
+        print(gate1.error_summary())
+        sys.exit(1)
+    print("  GATE 1: PASS")
     print()
 
     # Phase 2-3: Separator
@@ -489,6 +549,11 @@ def main():
     create_p = sub.add_parser("create", help="Create a pipeline using the 5-agent system")
     create_p.add_argument("request", help="Business request describing the pipeline to build")
     create_p.add_argument("--name", help="Pipeline name (auto-generated if omitted)")
+    create_p.add_argument(
+        "--no-confirm",
+        action="store_true",
+        help="Skip interactive graph confirmation (caller must use Orchestrator.confirm_graph)",
+    )
 
     sub.add_parser("sync", help="Validate manifests and create missing folders")
     sub.add_parser("run", help="Start Dagster dev server")
