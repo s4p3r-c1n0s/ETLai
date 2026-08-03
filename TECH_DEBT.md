@@ -110,7 +110,7 @@ If intent classifier confidence is below threshold or ambiguity detector fires 3
 
 **Dependencies:** `outlines` or `sglang` for constrained decoding, `sentence-transformers` for embeddings, `duckdb` or `polars` for profiling, `ollama` or `llama-cpp-python` for local LLM serving.
 
-**When:** Next major feature cycle. Requires: choosing a local model serving stack, building intent/slot schemas for 8 pipeline types, collecting training examples for embedding calibration.
+**When:** Next major feature cycle. Requires: choosing a local model serving stack, building intent/slot schemas for 8 pipeline types, collecting training examples for embedding calibration. **Prerequisite:** item #10 (`TaskPacket` / one card per invoke) so backends receive task cards, not agent personas.
 
 ---
 
@@ -278,5 +278,89 @@ Orchestrator owns the user channel for phases 0–1. BA is a worker that drafts 
 - Add crash-safe restore (try/finally in CLI + `etlai create --restore-firewall` / status check on startup).
 
 **When:** Before relying on `etlai create` / multi-agent flow for real domain-sensitive pipelines. Related to privacy goals in item #5.
+
+---
+
+## 10. Task-card router — one phase (or sub-step) per invoke
+
+**Status:** Design only; not implemented.
+
+**Problem:** Layers are detangled in docs (#8) and BA mediation exists (#7), but runtime still thinks in **role bundles** (BA = phases 0–1, Separator = 2–3, …). `build_ba_turn_prompt()` still attaches *both* phase 0 and 1 playbooks. Small local models and item #5 backends need **one invoke = one task card**, with roles optional packaging—not the unit of work.
+
+**Goal:** Control plane builds a `TaskPacket` per invoke and routes it. Role system prompts become optional allowlist overlays; phase/sub-step cards + schemas are mandatory.
+
+### Target packet
+
+```text
+TaskPacket:
+  task_id: phase_0 | phase_1 | phase_2 | … | ba_slot_fill | …
+  playbook_path: workflow/phase_N_*.md   # exactly one
+  template_paths: [...]
+  readable_paths: [...]                 # from allowlist table, not persona prose
+  writable_paths: [...]
+  inputs: { prior answers, gate_errors, artifact snippets as needed }
+  backend: Code | Embedding | LocalLLM | Cloud   # wired in item #5
+```
+
+### Work breakdown
+
+#### A. Catalog & contracts
+
+| # | Task | Notes |
+|---|------|--------|
+| A1 | Define `TaskSpec` registry (id → playbook, templates, default reads/writes, gate after) | Single source; replace hard-coded role→phases maps in `build_agent_context` |
+| A2 | Split oversized phases into sub-step cards where needed for local models | Start with BA: align with item #5 steps (file inspect, intent, slot fill, ambiguity, requirements)—each card ≤ one schema out |
+| A3 | Keep phase_2…7 as one card each until measured too large; document max token/complexity budget per card | Avoid premature split |
+| A4 | Machine-readable allowlists (YAML/JSON) derived from today’s role tables | Role `.md` files become human docs or generated from allowlists |
+
+#### B. Orchestrator / control plane
+
+| # | Task | Notes |
+|---|------|--------|
+| B1 | `build_task_packet(task_id, **inputs) -> TaskPacket` | Replaces / generalizes `build_ba_turn_prompt`; one playbook path only |
+| B2 | Phase advance state machine: next `task_id` after artifact + gate | Explicit graph: 0→1→confirm→2→3→…; mediation loops stay on 0/1 only |
+| B3 | `etlai create` / ORCHESTRATION: spawn or run **per task_id**, not per agent persona | “Separator” = two sequential packets (2 then 3) unless one backend call is forced |
+| B4 | Retry packet = same `task_id` + `gate_errors` in inputs | No re-bundle of sibling phases |
+| B5 | Optional `--task phase_3` for resume/debug | Fits item #6 `NEXT_STEP.md` later |
+
+#### C. Deprecate role-as-unit-of-work
+
+| # | Task | Notes |
+|---|------|--------|
+| C1 | Stop instructing workers with multi-phase “you are the Separator” process lists | Already thinned; ensure ORCHESTRATION/CLI don’t re-fat them |
+| C2 | Map legacy role names → list of `task_id`s for UX only | `business_analyst → [phase_0, phase_1]`; packaging, not invoke |
+| C3 | Update HOW_TO_USE_AGENTS / PHASE_DEPENDENCY_GRAPH to show task packets | Avoid teaching “agent owns phases” as the runtime model |
+
+#### D. Bridge to multi-backend (item #5)
+
+| # | Task | Notes |
+|---|------|--------|
+| D1 | Attach `backend` hint on each `TaskSpec` | Code for inspect/gates/user answers; LocalLLM for slot fill/separation; Cloud for atom create |
+| D2 | `TaskRouter.execute(packet)` stub that today only assembles prompt text | Real backends land in #5; packet shape must not change |
+| D3 | Constrained-output schema path per task (JSON Schema / Pydantic) | Required for LocalLLM; place next to templates |
+
+#### E. Tests & gates
+
+| # | Task | Notes |
+|---|------|--------|
+| E1 | Assert every built packet references exactly one `phase_*.md` (or one sub-step card) | |
+| E2 | Assert no packet for Atom Smith tasks includes mapping/graph paths (with #9 firewall) | |
+| E3 | Contract test: role markdown does not restate phase Process sections | Drift guard from #8 |
+
+### Out of scope (this item)
+
+- Implementing LocalLLM/Embedding/Cloud backends (item #5)
+- Aider `NEXT_STEP.md` UX (item #6) — consume `TaskSpec` once this exists
+- Firewall physical hardening (item #9) — do in parallel; router must call firewall around phase_4/5 packets
+
+### Dependency order
+
+```text
+#8 LAYERS (done) → #10 TaskSpec + build_task_packet → #9 firewall (parallel OK)
+                 → #5 backends plug into TaskRouter
+                 → #6 NEXT_STEP.md generated from TaskSpec
+```
+
+**When:** Immediately after / overlapping #9; **before** investing in item #5 model serving. Without task packets, multi-backend will re-entangle prompts around agent personas.
 
 ---
