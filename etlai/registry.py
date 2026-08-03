@@ -13,7 +13,7 @@ from dagster import Definitions, In, OpExecutionContext, Out, ScheduleDefinition
 from etlai.helpers.config_store import config_exists, load_config, save_config
 from etlai.helpers.env_loader import load_env_file
 from etlai.helpers.folders import PipelineFolders
-from etlai.helpers.input_resolver import InputResolver
+from etlai.helpers.input_resolver import InputResolver, order_files_by_pattern
 from etlai.helpers.notifier import notify
 from etlai.sensors.hot_folder_sensor import build_hot_folder_sensor
 
@@ -122,11 +122,19 @@ def _build_inbox_files_sensor(manifest: dict, pipeline_name: str, rule: dict | N
         return None
 
     load_op_name = manifest.get("load_files_op_name", f"{pipeline_name}__load_files")
+
+    input_patterns = None
+    if inputs_def:
+        patterns = [inp["pattern"] for inp in inputs_def if inp.get("role") == "transient" and inp.get("pattern")]
+        if patterns:
+            input_patterns = patterns
+
     return build_hot_folder_sensor(
         pipeline_name, pipeline_name,
         min_files=min_files,
         load_files_op_name=load_op_name,
         stability_seconds=stability_seconds,
+        input_patterns=input_patterns,
     )
 
 
@@ -342,6 +350,8 @@ def _build_single_job(manifest: dict, project_root: Path):
         paths = folders.list_inbox_files(pattern)
         if not paths:
             raise RuntimeError(f"No files found in {folders.inbox}")
+        if inputs_def:
+            paths = order_files_by_pattern(paths, inputs_def)
         return paths
 
     @op(name=f"{pipeline_name}__execute", ins={"file_paths": In(list)})
@@ -404,6 +414,8 @@ def _build_composite_job(manifest: dict, project_root: Path):
         paths = folders.list_inbox_files(pattern)
         if len(paths) < min_files:
             raise RuntimeError(f"Need {min_files} files in {folders.inbox}, found {len(paths)}.")
+        if inputs_def:
+            paths = order_files_by_pattern(paths, inputs_def)
         return paths[:min_files]
 
     # Precompute input_from declarations for non-linear reads

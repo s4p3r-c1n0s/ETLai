@@ -2,6 +2,48 @@
 
 from __future__ import annotations
 
+import fnmatch
+import os
+
+
+def order_files_by_pattern(file_paths: list[str], inputs: list[dict]) -> list[str]:
+    """Reorder inbox files to match declared input patterns.
+
+    Args:
+        file_paths: unordered list of file paths from inbox
+        inputs: manifest inputs[] declarations (must have 'pattern' and role=='transient')
+
+    Returns:
+        Reordered file list matching input declaration order.
+        Files not matching any pattern are appended at the end.
+    """
+    transient_inputs = [inp for inp in inputs if inp.get("role") == "transient"]
+    if not transient_inputs:
+        return file_paths
+
+    ordered = []
+    remaining = list(file_paths)
+
+    for inp in transient_inputs:
+        pattern = inp.get("pattern")
+        if not pattern:
+            if remaining:
+                ordered.append(remaining.pop(0))
+            continue
+
+        matched = None
+        for fp in remaining:
+            if fnmatch.fnmatch(os.path.basename(fp), pattern):
+                matched = fp
+                break
+
+        if matched:
+            remaining.remove(matched)
+            ordered.append(matched)
+
+    ordered.extend(remaining)
+    return ordered
+
 
 class InputResolver:
     """Resolves file paths into atom config params.

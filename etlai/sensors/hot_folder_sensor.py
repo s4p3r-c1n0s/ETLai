@@ -1,5 +1,6 @@
 """Generic hot folder sensor factory with file stability check and sweeper."""
 
+import fnmatch
 import os
 import re
 import time
@@ -46,10 +47,21 @@ def _sweep_rejected(folders: PipelineFolders, context: SensorEvaluationContext):
         context.log.warning(f"Swept rejected file: {filename}")
 
 
-def build_hot_folder_sensor(pipeline_name: str, job_name: str, min_files: int = 2, load_files_op_name: str | None = None, stability_seconds: int = STABILITY_WAIT_SECONDS):
+def _filter_by_patterns(file_paths: list[str], patterns: list[str]) -> list[str]:
+    """Keep only files matching at least one declared input pattern."""
+    matched = []
+    for fp in file_paths:
+        basename = os.path.basename(fp)
+        if any(fnmatch.fnmatch(basename, p) for p in patterns):
+            matched.append(fp)
+    return matched
+
+
+def build_hot_folder_sensor(pipeline_name: str, job_name: str, min_files: int = 2, load_files_op_name: str | None = None, stability_seconds: int = STABILITY_WAIT_SECONDS, input_patterns: list[str] | None = None):
     folders = PipelineFolders(pipeline_name)
     folders.ensure()
     _stability = stability_seconds
+    _patterns = input_patterns
     sensor_name = f"{pipeline_name}_sensor"
     if load_files_op_name is None:
         load_files_op_name = f"{job_name}__load_files"
@@ -58,6 +70,9 @@ def build_hot_folder_sensor(pipeline_name: str, job_name: str, min_files: int = 
     def _sensor(context: SensorEvaluationContext):
         _sweep_rejected(folders, context)
         file_paths = folders.list_inbox_files(FILE_PATTERN)
+
+        if _patterns:
+            file_paths = _filter_by_patterns(file_paths, _patterns)
 
         if len(file_paths) < min_files:
             yield SkipReason(f"Waiting for {min_files} files in inbox, have {len(file_paths)}.")

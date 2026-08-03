@@ -236,11 +236,11 @@ chmod +x .githooks/*
 | Registry | ✅ | 85%+ | ✅ Done (manifest loading, resolution, triggers, execute_step, inject_as, input_from, mid-pipeline joins) |
 | Helpers | ✅ | 90%+ | ✅ Done (config_store, env_loader, folders) |
 | Inputs | ✅ | 90%+ | ✅ Done (validation, README gen, min_files calc) |
-| InputResolver | ✅ | 95%+ | ✅ Done (fallback heuristic, explicit N-file mapping, continuation) |
+| InputResolver | ✅ | 95%+ | ✅ Done (fallback heuristic, explicit N-file mapping, continuation, pattern ordering) |
 | Orchestrator | ✅ | 85%+ | ✅ Done (gate runner, firewall, agent context, phase status, pipeline naming) |
 | Sensors | ⬜ | 80%+ | TODO (covered partially in registry tests) |
 | CLI | ⬜ | 60%+ | TODO |
-| **Overall** | **118 tests** | **80%+** | **✅ Comprehensive coverage** |
+| **Overall** | **126 tests** | **80%+** | **✅ Comprehensive coverage** |
 
 Check actual coverage: `pip install -e ".[dev]"` then `pytest --cov=etlai --cov-report=html`
 
