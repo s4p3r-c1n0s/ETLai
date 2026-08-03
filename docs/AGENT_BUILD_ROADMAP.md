@@ -142,7 +142,7 @@ All system prompts written. Each agent knows exactly what it does, what it knows
 2. Linearize DAG (convert branching to linear steps)
 3. Translate col_a → real_name for config.json
 4. Build manifest.yaml with steps, inputs, triggers, inject_as
-5. Set path: ask, form: passthrough, final rename_columns
+5. Set path: ask, write config.json, final rename_columns
 6. Run etlai sync
 
 **Inputs:**

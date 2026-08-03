@@ -313,7 +313,7 @@ def cmd_run():
 ### Benefits
 
 - **Testability**: Can mock adapter for unit tests without needing Dagster runtime
-- **Flexibility**: Swap orchestrators without touching atoms, forms, or business logic
+- **Flexibility**: Swap orchestrators without touching atoms or business logic
 - **Future-proof**: New orchestrators (Temporal, custom) are just new adapter implementations
 - **Separation of concerns**: Pipeline logic (what to execute) decoupled from orchestration (how to schedule/run)
 
@@ -327,4 +327,4 @@ def cmd_run():
 
 - Keep Dagster as the default and primary supported backend
 - Alternative adapters can be community-contributed or optional extras
-- Atoms and forms remain completely orchestrator-agnostic (already achieved)
+- Atoms remain completely orchestrator-agnostic (already achieved)

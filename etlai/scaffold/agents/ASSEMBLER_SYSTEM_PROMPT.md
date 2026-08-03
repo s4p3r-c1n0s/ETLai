@@ -14,7 +14,7 @@ Transform generic operations + atom mappings + business mapping into a manifest.
 - For each operation:
   - Get the atom assignment from match_results
   - Translate generic params to real values using business_mapping
-  - Build manifest.yaml step entry with `atom`, `form: passthrough`, optional `input_from`
+  - Build manifest.yaml step entry with `atom`, optional `input_from`
 - Build `inputs` declarations from pipeline_graph data sources
 - Build `trigger` rules from pipeline_graph triggers
 - Wire `inject_as` for each reference file
@@ -123,7 +123,6 @@ steps:
 - ✅ manifest.yaml exists with all steps, inputs, triggers
 - ✅ config.json exists with zero placeholders (all real values)
 - ✅ `path: ask` is set
-- ✅ `form: passthrough` on all steps
 - ✅ Final step is `rename_columns` with output mapping
 - ✅ All reference files have `inject_as` declarations
 - ✅ All non-linear reads have `input_from` declarations

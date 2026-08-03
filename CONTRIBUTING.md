@@ -2,7 +2,7 @@
 
 ## Overview
 
-ETLai is a local, folder-driven Dagster CSV transformation engine. Contributions are welcome for new atoms, forms, helpers, documentation, and tests.
+ETLai is a local, folder-driven Dagster CSV transformation engine. Contributions are welcome for new atoms, helpers, documentation, and tests.
 
 ---
 
@@ -64,7 +64,6 @@ Quick summary:
 ### All changes must include tests
 
 - **New atoms:** Add tests in `tests/test_atoms.py` (success + failure paths)
-- **New forms:** Add tests in `tests/test_forms.py`
 - **New helpers:** Add tests in `tests/test_helpers.py`
 - **Bug fixes:** Add regression test demonstrating the bug
 
@@ -91,7 +90,6 @@ pytest -m "not slow and not integration"
 
 - **Overall:** 80%+
 - **Atoms:** 90%+ (pure functions, easy to test)
-- **Forms:** 70%+ (Tkinter UI harder to test)
 - **Registry:** 85%+ (critical path)
 - **Helpers:** 90%+ (utility functions)
 
@@ -113,15 +111,11 @@ pytest -m "not slow and not integration"
 - No Dagster imports (pure Python)
 - Litmus test: rename all columns to A, B, C — atom still works?
 
-### Forms
+### Config
 
-**Contract:** `configure(file_paths: list[str], existing_config: dict | None) -> dict`
-
-**Rules:**
-- Return `existing_config` immediately if valid (no UI)
-- Show Tkinter UI on first run only
-- Raise RuntimeError to reject files
-- For no-UI pipelines: use `passthrough` form + pre-written config.json
+Step parameters come solely from a pre-written `config.json` (no runtime prompts).
+Use `step_N` keys for every step — including `step_0`. Single-atom pipelines
+have only a `step_0` entry.
 
 ### Gate validators
 

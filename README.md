@@ -45,12 +45,11 @@ Each pipeline is defined by a **manifest** (`pipelines/<name>/manifest.yaml`)
 that wires together:
 
 - **Atoms** — reusable, single-unit-of-work transformations (domain-agnostic)
-- **Forms** — first-run config UI or `passthrough` (no-UI, reads config.json)
 - **Triggers** — what causes the pipeline to run (file sensor, cron, or both)
 - **Config** — business logic (column names, thresholds, expressions) in config.json
 
 ```text
-Trigger fires → load files → configure (form/config.json) → execute steps
+Trigger fires → load files → read config.json → execute steps
                                ├→ processed/ + output/     (success)
                                └→ rejected/ + *.error.txt  (failure)
 ```
@@ -64,9 +63,10 @@ Drop files into `inbox/`. Sensor detects stable files and triggers the pipeline.
 ```yaml
 name: vlookup_rollnumber
 atom: vlookup
-form: vlookup_column_picker
 min_files: 2
 ```
+
+Its parameters live in `pipelines/vlookup_rollnumber/config.json`.
 
 ### API-based (data ingestion)
 
@@ -75,7 +75,6 @@ Fetch data from REST APIs on a schedule. No inbox files needed.
 ```yaml
 name: fetch_hr_data
 atom: api_fetch
-form: passthrough
 min_files: 0
 env_file: ~/.etlai/secrets.env
 requires_env: [HR_API_TOKEN]
@@ -128,14 +127,6 @@ trigger:
 | `groupby` | Group by column with count |
 | `api_fetch` | HTTP fetch → CSV (JSON/XML/CSV response parsing) |
 | `mock_generate` | Generate synthetic data from CSV headers |
-
-## Shipped forms
-
-| Form | Description |
-|------|-------------|
-| `passthrough` | No UI — reads config.json and passes to atom |
-| `vlookup_column_picker` | Join column multi-select (Tkinter) |
-| `groupby_picker` | Single column selection (Tkinter) |
 
 ## Creating pipelines with AI
 
@@ -198,9 +189,8 @@ API credentials live in env files outside the project (e.g. `~/.etlai/secrets.en
 ## Resolution order
 
 - Atoms: `./atoms/<name>.py` → `etlai.atoms.<name>` (package)
-- Forms: `./forms/<name>.py` → `etlai.forms.<name>` (package)
 
-User files take precedence over shipped ones.
+User atoms take precedence over shipped ones.
 
 ## Development
 

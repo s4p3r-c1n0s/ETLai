@@ -1,6 +1,5 @@
 name: newsdata_fetch
 atom: api_fetch
-form: passthrough
 min_files: 0
 env_file: ~/.etlai/secrets.env
 requires_env:

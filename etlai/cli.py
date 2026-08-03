@@ -35,7 +35,7 @@ def cmd_init(args):
             print(f"  wrote {item}")
 
     # Create directory structure
-    for d in ["atoms", "forms"]:
+    for d in ["atoms"]:
         (target / d).mkdir(exist_ok=True)
         print(f"  created {d}/")
 
@@ -138,13 +138,8 @@ def cmd_sync(args):
         if "steps" in manifest:
             for step in manifest["steps"]:
                 atoms_to_check.append(step["atom"])
-                if step.get("form") and step["form"] != "passthrough":
-                    _check_form(step["form"], project_root, name, errors)
         else:
             atoms_to_check.append(manifest["atom"])
-            form = manifest.get("form", "passthrough")
-            if form != "passthrough":
-                _check_form(form, project_root, name, errors)
 
         for atom_name in atoms_to_check:
             _check_atom(atom_name, project_root, name, errors)
@@ -211,17 +206,6 @@ def _check_atom(atom_name: str, project_root: Path, pipeline_name: str, errors: 
         importlib.import_module(f"etlai.atoms.{atom_name}")
     except ImportError:
         errors.append(f"{pipeline_name}: atom '{atom_name}' not found in atoms/ or etlai.atoms")
-
-
-def _check_form(form_name: str, project_root: Path, pipeline_name: str, errors: list):
-    user_path = project_root / "forms" / f"{form_name}.py"
-    if user_path.is_file():
-        return
-    try:
-        import importlib
-        importlib.import_module(f"etlai.forms.{form_name}")
-    except ImportError:
-        errors.append(f"{pipeline_name}: form '{form_name}' not found in forms/ or etlai.forms")
 
 
 def _validate_inputs(inputs_def: list[dict], pipeline_name: str, data_root: Path, errors: list):
@@ -476,8 +460,8 @@ def cmd_list(args):
         print("No pipelines found.")
         return
 
-    print(f"{'Pipeline':<30} {'Atom(s)':<25} {'Form(s)':<25} {'Files'}")
-    print("-" * 90)
+    print(f"{'Pipeline':<30} {'Atom(s)':<40} {'Files'}")
+    print("-" * 80)
 
     for manifest_path in sorted(pipelines_root.glob("*/manifest.yaml")):
         with open(manifest_path) as f:
@@ -488,12 +472,10 @@ def cmd_list(args):
 
         if "steps" in manifest:
             atoms = ", ".join(s["atom"] for s in manifest["steps"])
-            forms = ", ".join(s.get("form", "passthrough") for s in manifest["steps"])
         else:
             atoms = manifest.get("atom", "?")
-            forms = manifest.get("form", "passthrough")
 
-        print(f"{name:<30} {atoms:<25} {forms:<25} {min_files}")
+        print(f"{name:<30} {atoms:<40} {min_files}")
 
 
 def main():

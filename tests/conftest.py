@@ -54,7 +54,6 @@ def sample_manifest(tmp_path):
     manifest_path = tmp_path / "manifest.yaml"
     manifest_path.write_text("""name: test_pipeline
 atom: vlookup
-form: passthrough
 min_files: 2
 """)
     return manifest_path
@@ -68,8 +67,6 @@ def sample_composite_manifest(tmp_path):
 min_files: 2
 steps:
   - atom: vlookup
-    form: passthrough
   - atom: groupby
-    form: passthrough
 """)
     return manifest_path

@@ -193,7 +193,7 @@ Your job:
 1. Linearize the DAG into sequential steps (use input_from for non-linear reads)
 2. Translate ALL generic placeholders to real values from business_mapping.json
 3. Write manifest.yaml to pipelines/{pipeline_name}/manifest.yaml with:
-   - steps (each with atom, form: passthrough)
+   - steps (each with atom)
    - inputs (with inject_as for reference files)
    - trigger rules
    - path: ask

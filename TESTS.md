@@ -44,7 +44,6 @@ pytest tests/test_atoms.py::TestVlookup::test_basic_join
 tests/
 ├── conftest.py              # Shared fixtures
 ├── test_atoms.py            # ✅ Atom contract tests (created)
-├── test_forms.py            # ✅ Form contract tests (created)
 ├── test_registry.py         # ✅ Manifest loading, job building, inject_as, input_from
 ├── test_helpers.py          # ✅ Folder, config, env helpers (created)
 ├── test_input_resolver.py   # ✅ InputResolver: fallback heuristic + explicit inputs_map
@@ -106,40 +105,13 @@ def test_vlookup_basic(tmp_path):
     assert len(df) == 2
 ```
 
-### 2. Form tests
-
-**Contract:** `configure(file_paths: list[str], existing_config: dict | None) -> dict`
-
-**Rules:**
-- Test with existing_config=None (first run)
-- Test with existing_config present (subsequent run)
-- Test with empty dict as existing_config (not None)
-- Mock Tkinter UI interactions where needed
-- Verify returned dict matches atom param expectations
-
-**Example:**
-```python
-def test_passthrough_with_existing_config():
-    from etlai.forms.passthrough import configure
-    
-    existing = {"group_column": "religion"}
-    result = configure([], existing)
-    
-    assert result == existing
-
-def test_passthrough_without_config_raises():
-    from etlai.forms.passthrough import configure
-    
-    with pytest.raises(RuntimeError, match="No config.json found"):
-        configure([], None)
-```
-
-### 3. Registry tests
+### 2. Registry tests
 
 **Rules:**
 - Test manifest loading (valid, invalid, missing)
 - Test single vs composite job building
 - Test trigger building (sensors, schedules)
+- Test step config loading from `step_N` keys (including `step_0`)
 - Mock Dagster primitives to avoid runtime dependencies
 - Use fixture manifests from `tests/fixtures/`
 
@@ -150,7 +122,6 @@ def test_load_manifest(tmp_path):
     manifest_path.write_text("""
 name: test_pipeline
 atom: vlookup
-form: passthrough
 min_files: 2
 """)
     
@@ -162,7 +133,7 @@ min_files: 2
     assert manifest["min_files"] == 2
 ```
 
-### 4. Helper tests
+### 3. Helper tests
 
 **Rules:**
 - Test PipelineFolders: creation, listing, moving files
@@ -170,7 +141,7 @@ min_files: 2
 - Test env_loader: loading env files, validation, variable resolution
 - Use tmp_path fixture for all file operations
 
-### 5. Integration tests
+### 4. Integration tests
 
 **Rules:**
 - Test end-to-end: manifest → job build → trigger build
@@ -195,7 +166,6 @@ All use `tmp_path` for isolated, auto-cleaned temporary directories.
 ## Coverage goals
 
 - **Atoms**: 90%+ coverage (pure functions, easy to test)
-- **Forms**: 70%+ (Tkinter UI harder to test, focus on passthrough and logic)
 - **Registry**: 85%+ (critical path, no UI)
 - **Helpers**: 90%+ (pure utility functions)
 - **CLI**: 60%+ (integration-style, harder to isolate)
@@ -203,7 +173,7 @@ All use `tmp_path` for isolated, auto-cleaned temporary directories.
 
 ## Testing checklist for new features
 
-When adding a new atom, form, or helper:
+When adding a new atom or helper:
 
 - [ ] Unit tests for success path
 - [ ] Unit tests for failure paths (missing params, invalid data)
@@ -232,7 +202,6 @@ chmod +x .githooks/*
 | Component | Tests | Goal | Status |
 |-----------|-------|------|--------|
 | Atoms | ✅ | 90%+ | ✅ Done (vlookup, groupby, mock_generate, api_fetch, computed_column, group_aggregate, filter_rows, flag_rows, rename_columns, sort_rows) |
-| Forms | ✅ | 70%+ | ✅ Done (passthrough) |
 | Registry | ✅ | 85%+ | ✅ Done (manifest loading, resolution, triggers, execute_step, inject_as, input_from, mid-pipeline joins) |
 | Helpers | ✅ | 90%+ | ✅ Done (config_store, env_loader, folders) |
 | Inputs | ✅ | 90%+ | ✅ Done (validation, README gen, min_files calc) |
@@ -240,7 +209,7 @@ chmod +x .githooks/*
 | Orchestrator | ✅ | 85%+ | ✅ Done (gate runner, firewall, agent context, phase status, pipeline naming) |
 | Sensors | ⬜ | 80%+ | TODO (covered partially in registry tests) |
 | CLI | ⬜ | 60%+ | TODO |
-| **Overall** | **126 tests** | **80%+** | **✅ Comprehensive coverage** |
+| **Overall** | **123 tests** | **80%+** | **✅ Comprehensive coverage** |
 
 Check actual coverage: `pip install -e ".[dev]"` then `pytest --cov=etlai --cov-report=html`
 

@@ -39,13 +39,13 @@ Use this to design pipelines with multiple outputs: place strategic steps (renam
 5. Identify which intermediate steps should be named outputs (assign `name:` fields).
 6. Build manifest.yaml:
    a. Set pipeline `name` from pipeline_graph.yaml.
-   b. Build `steps:` list in linearized order, each referencing its atom and `form: passthrough`.
+   b. Build `steps:` list in linearized order, each referencing its atom.
    c. For any step that needs non-adjacent input, add `input_from: <step_index>`.
    d. Build `inputs:` declarations from pipeline_graph.yaml data_sources:
       - role: reference for permanent data, role: transient for incoming data
       - Add `inject_as:` for each reference source (map to the step + param that needs it)
    e. Build `trigger:` from pipeline_graph.yaml triggers.
-   f. Add a final step: `atom: rename_columns`, `form: passthrough` (rehydration).
+   f. Add a final step: `atom: rename_columns` (rehydration).
 7. Build config.json:
    a. For each step, translate generic params into real values using business_mapping.json:
       - `col_a` → look up real_name in business_mapping.columns → use that as param value
@@ -97,7 +97,7 @@ The atom receives real column names via config — it doesn't know what "sku" me
 
 ## DO
 
-- Use `form: passthrough` for every step (no UI — config.json is pre-written)
+- Pre-write config.json for every step (no UI — params come solely from config)
 - Wire `inject_as` for every reference data source (never leave reference file discovery to the atom)
 - Add `rename_columns` as the explicit final step
 - Set `min_files` based on count of transient inputs
@@ -107,7 +107,6 @@ The atom receives real column names via config — it doesn't know what "sku" me
 ## DO NOT
 
 - Put generic placeholder names (col_a, threshold_1) in config.json — translate them to real values
-- Create forms other than passthrough (all config is pre-written by this phase)
 - Skip the rename_columns final step (output must have business-meaningful column names)
 - Hardcode file paths in config — use inject_as for reference files, framework handles transient
 - Create steps that don't map to an entry in match_results.yaml

@@ -105,7 +105,7 @@ End-user guide: `HOW_TO_USE_AGENTS.md`
 
 1. User drops CSV files into `pipelines/<name>/inbox/`
 2. A sensor detects stable files, moves them to `staging/`, triggers a job
-3. The job runs: load files → configure (passthrough reads config.json) → execute atom → notify
+3. The job runs: load files → read config.json → execute atom → notify
 4. On success: files → `processed/`, output → `output/`
 5. On failure: files → `rejected/` with error reason
 
@@ -130,13 +130,11 @@ If a shipped atom handles the operation, USE IT. Do not create a new one.
 
 ---
 
-## Shipped Forms
+## Configuration
 
-| Form | Use case |
-|------|----------|
-| `passthrough` | No UI — reads config.json, passes to atom. **Use this for all automated pipelines.** |
-| `vlookup_column_picker` | Interactive join column selection (Tkinter) |
-| `groupby_picker` | Interactive group column selection (Tkinter) |
+Pipelines have no runtime UI. Every parameter (column names, thresholds,
+expressions, mappings) is pre-written into `config.json` during assembly. The
+registry loads it at runtime and injects file paths. A missing config raises.
 
 ---
 
@@ -199,9 +197,8 @@ trigger:
 ## Resolution Order
 
 - Atoms: `./atoms/<name>.py` → `etlai.atoms.<name>` (shipped package)
-- Forms: `./forms/<name>.py` → `etlai.forms.<name>` (shipped package)
 
-User-created files take precedence over shipped ones.
+User-created atoms take precedence over shipped ones.
 
 ---
 
@@ -220,7 +217,7 @@ For data fetched from APIs:
 
 - Python 3.10+ required
 - CSV files only for processing
-- `form: passthrough` for all automated pipelines (Tkinter forms are for human-interactive only)
+- All step params come from a pre-written `config.json` (no runtime UI)
 - Do not commit: `pipelines/*/inbox/`, `staging/`, `processed/`, `rejected/`, `output/`, `config.json`
 - Reference files are permanent — do not gitignore `reference/`
 

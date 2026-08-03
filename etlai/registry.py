@@ -10,7 +10,7 @@ from pathlib import Path
 import yaml
 from dagster import Definitions, In, OpExecutionContext, Out, ScheduleDefinition, job, op
 
-from etlai.helpers.config_store import config_exists, load_config, save_config
+from etlai.helpers.config_store import load_config
 from etlai.helpers.env_loader import load_env_file
 from etlai.helpers.folders import PipelineFolders
 from etlai.helpers.input_resolver import InputResolver, order_files_by_pattern
@@ -176,21 +176,23 @@ def _resolve_atom(atom_name: str, project_root: Path):
     return importlib.import_module(f"etlai.atoms.{atom_name}")
 
 
-def _resolve_form(form_name: str, project_root: Path):
-    """Resolve form module: user forms/ first, then etlai.forms."""
-    user_form_path = project_root / "forms" / f"{form_name}.py"
-    if user_form_path.is_file():
-        spec = importlib.util.spec_from_file_location(f"user_forms.{form_name}", user_form_path)
-        mod = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(mod)
-        return mod
+def _load_step_config(step_config: dict | None) -> dict:
+    """Return the pre-written config for a step.
 
-    return importlib.import_module(f"etlai.forms.{form_name}")
+    Config must be provided in config.json. Raises with a helpful message if
+    absent, since pipelines no longer prompt for parameters at runtime.
+    """
+    if step_config is not None:
+        return dict(step_config)
+
+    raise RuntimeError(
+        "No config.json found for this pipeline step. "
+        "Create config.json with the required parameters before running."
+    )
 
 
 def _execute_step(
     atom_module,
-    form_module,
     folders: PipelineFolders,
     pipeline_name: str,
     step_index: int,
@@ -205,43 +207,25 @@ def _execute_step(
 ):
     """Shared logic for configuring and executing a single step (used by single and composite jobs).
 
+    Config is read directly from config.json: single-job pipelines use the flat
+    top-level dict; composite steps read their `step_N` key. Missing config raises.
+
     Returns the target_path (output location) for this step.
     """
-    # Load full config (we'll update a step section)
     existing = load_config(folders)
-    step_config_key = f"step_{step_index}" if step_index > 0 else None
 
     # For single-job pipelines, use the flat config. For composites, use step_N key.
     if is_first and step_index == 0:
-        step_existing = existing
-        step_config_key = None
+        step_config = existing
     else:
-        step_existing = existing.get(f"step_{step_index}") if existing else None
+        step_config = existing.get(f"step_{step_index}") if existing else None
 
-    reconfigure = bool(context.op_config.get("reconfigure")) if context and context.op_config else False
-    if reconfigure:
-        step_existing = None
-
-    # Call form to get/update config
     try:
-        if is_first:
-            form_input = file_paths
-        else:
-            form_input = [prev_output]
-
-        config = form_module.configure(form_input, step_existing)
+        config = _load_step_config(step_config)
     except Exception as e:
-        folders.move_to_rejected(file_paths, f"Step {step_index} config cancelled: {e}")
+        folders.move_to_rejected(file_paths, f"Step {step_index} config missing: {e}")
         notify(title=f"{pipeline_name} — Failed", message=str(e)[:200])
         raise
-
-    # Save updated config
-    if step_config_key:
-        full_config = existing or {}
-        full_config[step_config_key] = config
-        save_config(folders, full_config)
-    else:
-        save_config(folders, config)
 
     # Inject reference files
     ref_files = folders.list_reference_files()
@@ -313,11 +297,9 @@ def _build_single_job(manifest: dict, project_root: Path):
     """Build a Dagster job for a single-atom pipeline from its manifest."""
     pipeline_name = manifest["name"]
     atom_name = manifest["atom"]
-    form_name = manifest.get("form", "passthrough")
     env_file = manifest.get("env_file")
 
     atom_module = _resolve_atom(atom_name, project_root)
-    form_module = _resolve_form(form_name, project_root)
     folders = PipelineFolders(pipeline_name)
 
     # Extract input metadata for atoms
@@ -358,7 +340,6 @@ def _build_single_job(manifest: dict, project_root: Path):
     def _execute(context: OpExecutionContext, file_paths: list[str]) -> None:
         _execute_step(
             atom_module=atom_module,
-            form_module=form_module,
             folders=folders,
             pipeline_name=pipeline_name,
             step_index=0,
@@ -428,7 +409,6 @@ def _build_composite_job(manifest: dict, project_root: Path):
     step_ops = []
     for i, step in enumerate(steps):
         atom_module = _resolve_atom(step["atom"], project_root)
-        form_module = _resolve_form(step.get("form", "passthrough"), project_root)
         step_op_name = f"{pipeline_name}__step_{i}_{step['atom']}"
         step_name = step.get("name")  # Option B: named steps
         is_first = (i == 0)
@@ -436,13 +416,12 @@ def _build_composite_job(manifest: dict, project_root: Path):
 
         step_inputs_map = step.get("inputs_map")
 
-        def _make_step_op(atom_mod, form_mod, op_name, step_index, first, last, sname, imap):
+        def _make_step_op(atom_mod, op_name, step_index, first, last, sname, imap):
             if first:
                 @op(name=op_name, ins={"file_paths": In(list)}, out={"output_path": Out()})
                 def _step(context: OpExecutionContext, file_paths: list[str]) -> str:
                     return _execute_step(
                         atom_module=atom_mod,
-                        form_module=form_mod,
                         folders=folders,
                         pipeline_name=pipeline_name,
                         step_index=step_index,
@@ -459,7 +438,6 @@ def _build_composite_job(manifest: dict, project_root: Path):
                 def _step(context: OpExecutionContext, file_paths: list[str], prev_output: str) -> str:
                     return _execute_step(
                         atom_module=atom_mod,
-                        form_module=form_mod,
                         folders=folders,
                         pipeline_name=pipeline_name,
                         step_index=step_index,
@@ -475,7 +453,7 @@ def _build_composite_job(manifest: dict, project_root: Path):
 
             return _step
 
-        step_ops.append(_make_step_op(atom_module, form_module, step_op_name, i, is_first, is_last, step_name, step_inputs_map))
+        step_ops.append(_make_step_op(atom_module, step_op_name, i, is_first, is_last, step_name, step_inputs_map))
 
     @job(name=pipeline_name)
     def _composite_job():

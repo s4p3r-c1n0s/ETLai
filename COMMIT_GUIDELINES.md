@@ -26,7 +26,7 @@
 
 ## Types
 
-- `feat:` — New feature (new atom, form, command)
+- `feat:` — New feature (new atom, command, helper)
 - `fix:` — Bug fix
 - `refactor:` — Code reorganization (no behavior change)
 - `test:` — Test additions or fixes
@@ -128,7 +128,7 @@ Example:
 ```
 release: v0.3.2 - testing and registry improvements
 
-- Tests covering atoms, forms, helpers, registry
+- Tests covering atoms, helpers, registry
 - Extracted shared _execute_step function
 - Fixed prepare-commit-msg v prefix bug
 - Added git hooks for automated test validation

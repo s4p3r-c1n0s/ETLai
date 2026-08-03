@@ -19,7 +19,6 @@ If any of these are missing, STOP. Go back to the appropriate earlier phase.
 name: <pipeline_name>
 path: ask                           # Prompt user for data folder location during sync
 atom: <atom_name>
-form: passthrough
 min_files: <count of transient inputs>
 
 inputs:
@@ -66,15 +65,11 @@ inputs:
 steps:
   - name: enrich_data           # Optional: step produces <name>.csv as output
     atom: <atom_for_op_1>
-    form: passthrough
   - name: detail_export         # Optional: named steps become first-class outputs
     atom: <atom_for_op_2>
-    form: passthrough
   - atom: <atom_for_op_3>       # input_from: reads step 0's output instead of step 1's
-    form: passthrough
     input_from: 0
   - atom: rename_columns        # ALWAYS last step (produces output.csv)
-    form: passthrough
 
 trigger:
   rules:
@@ -197,13 +192,11 @@ The mapping comes from `business_mapping.json → output_columns`:
 }
 ```
 
-## form: passthrough — Always
+## Config comes from config.json — Always
 
-All pipelines assembled by this workflow use `form: passthrough` for EVERY step.
-
-Why: config.json is pre-written during assembly. There is no first-run UI needed. The form just reads config.json and passes it to the atom.
-
-NEVER use any other form in an automated pipeline. Forms with Tkinter UI are for human-interactive pipelines only.
+Pipelines have no runtime UI. Every step's parameters are pre-written into
+`config.json` during assembly. The registry loads that config at runtime and
+injects file paths — there is no interactive prompt. A missing config raises.
 
 ## Non-Linear Input (input_from)
 
@@ -212,19 +205,13 @@ By default, each step reads the **immediately previous step's** output. When a s
 ```yaml
 steps:
   - atom: vlookup               # step 0 → _intermediate_0.csv
-    form: passthrough
   - atom: computed_column        # step 1, reads step 0 → _intermediate_1.csv
-    form: passthrough
   - name: detail_export          # step 2, reads step 1 → detail_export.csv
     atom: rename_columns
-    form: passthrough
   - atom: group_aggregate        # step 3, reads step 1 (NOT step 2!)
-    form: passthrough
     input_from: 1
   - atom: flag_rows              # step 4, reads step 3
-    form: passthrough
   - atom: rename_columns         # step 5 (final) → output.csv
-    form: passthrough
 ```
 
 **Rules:**
@@ -243,10 +230,8 @@ Use `name:` on steps to produce multiple named outputs:
 steps:
   - name: transaction_detail    # Produces transaction_detail.csv
     atom: rename_columns
-    form: passthrough
   - name: reconciliation_summary # Produces reconciliation_summary.csv (not final, will be output.csv)
     atom: rename_columns
-    form: passthrough
 ```
 
 All named intermediate steps produce `{name}.csv` in the output folder. The final step always produces `output.csv`.
@@ -254,7 +239,6 @@ All named intermediate steps produce `{name}.csv` in the output folder. The fina
 ## DO
 
 - Set `path: ask` in every manifest — user chooses data folder location during sync
-- Set `form: passthrough` on every step
 - Use `name:` for intermediate steps that are intentional outputs
 - Use `input_from: N` when a step needs input from a non-adjacent predecessor (branching DAGs)
 - Add `rename_columns` as the explicit last step
@@ -268,7 +252,6 @@ All named intermediate steps produce `{name}.csv` in the output folder. The fina
 
 - Leave generic placeholders (col_a, threshold_1) in config.json — they must be translated
 - Skip the rename_columns final step
-- Create forms other than passthrough
 - Hardcode file paths in config — use inject_as for references, framework handles transient
 - Add steps that don't correspond to an entry in match_results.yaml
 - Change the step order vs what atomic_operations.yaml defines

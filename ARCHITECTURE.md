@@ -17,7 +17,6 @@ ETLai is a pip-installable package that provides a local, folder-driven CSV tran
 │  ├── orchestrator.py     5-agent coordination (gates, firewall)     │
 │  ├── registry.py         Manifest scanner → Dagster Definitions      │
 │  ├── atoms/              10 shipped generic atoms                    │
-│  ├── forms/              Config UI forms (passthrough, pickers)      │
 │  ├── helpers/            Framework utilities                         │
 │  │   ├── folders.py      PipelineFolders (lifecycle + reference)    │
 │  │   ├── config_store.py JSON config persistence                     │
@@ -45,7 +44,6 @@ ETLai is a pip-installable package that provides a local, folder-driven CSV tran
 │  workflow/               Gate validators + phase playbooks            │
 │  agents/                 Agent system prompts                         │
 │  atoms/                  User/AI-created atoms                        │
-│  forms/                  User/AI-created forms                        │
 │  pipelines/                                                          │
 │    <name>/                                                           │
 │      manifest.yaml       Pipeline wiring                             │
@@ -77,23 +75,18 @@ def execute(params_json: str) -> str:
 - One verb per atom (join OR compute OR filter, never compound)
 - Business logic comes from config.json, never hardcoded
 
-### Form
+### Config
 
-```python
-def configure(file_paths: list[str], existing_config: dict | None) -> dict:
-    """First-run config UI or passthrough. Returns params dict."""
-```
-
-- If existing_config is valid → return immediately (no UI)
-- `passthrough` form: raises if no config exists (requires pre-written config.json)
-- For automated pipelines: always use `form: passthrough`
+Each pipeline's parameters live in a pre-written `config.json`. Single-atom
+pipelines use a flat top-level dict; composite steps read their `step_N` key.
+The registry loads this config at runtime and injects file paths — there is no
+interactive prompt. A missing config raises with a helpful message.
 
 ### Manifest (Single Atom)
 
 ```yaml
 name: pipeline_name
 atom: atom_module_name
-form: passthrough
 min_files: 1
 path: ask                        # Tkinter folder picker during sync
 trigger:
@@ -286,7 +279,7 @@ orch.get_phase_status()              # which artifacts exist
 4. Job starts:
    a. load_files: reads staged paths from RunConfig
    b. For each step:
-      - form.configure() → reads/saves config.json
+      - read step config from config.json
       - inject reference files (inject_as)
       - inject input files (auto-injection)
       - atom.execute(params_json)
@@ -299,7 +292,7 @@ orch.get_phase_status()              # which artifacts exist
 ```
 1. Cron schedule fires (min_files: 0, no sensor)
 2. load_files returns []
-3. passthrough reads config.json
+3. registry reads config.json
 4. Atom reads credentials from os.environ (loaded from env_file)
 5. Atom fetches data, writes to target_path
 ```
@@ -327,7 +320,6 @@ orch.get_phase_status()              # which artifacts exist
 
 ```
 Atoms:  project/atoms/<name>.py  →  etlai.atoms.<name>
-Forms:  project/forms/<name>.py  →  etlai.forms.<name>
 ```
 
 User files take precedence. This allows overriding shipped atoms without modifying the package.

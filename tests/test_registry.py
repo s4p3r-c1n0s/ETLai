@@ -1,5 +1,7 @@
 """Tests for ETLai registry."""
 
+import json
+
 import pytest
 
 
@@ -15,7 +17,6 @@ class TestManifestLoading:
         assert manifest is not None
         assert manifest["name"] == "test_pipeline"
         assert manifest["atom"] == "vlookup"
-        assert manifest["form"] == "passthrough"
         assert manifest["min_files"] == 2
 
     def test_load_missing_manifest(self, tmp_path):
@@ -79,43 +80,21 @@ def execute(params_json: str) -> str:
         assert "custom atom" in result
 
 
-class TestFormResolution:
-    """Tests for form resolution."""
+class TestStepConfigLoading:
+    """Tests for _load_step_config."""
 
-    def test_resolve_shipped_form(self, tmp_path, monkeypatch):
-        """Test resolving a shipped form from etlai.forms."""
-        from etlai.registry import _resolve_form
+    def test_returns_existing_config(self):
+        from etlai.registry import _load_step_config
 
-        monkeypatch.chdir(tmp_path)
+        config = _load_step_config({"group_column": "religion"})
 
-        # Should resolve to etlai.forms.passthrough
-        form_module = _resolve_form("passthrough", tmp_path)
+        assert config == {"group_column": "religion"}
 
-        assert hasattr(form_module, "configure")
-        assert callable(form_module.configure)
+    def test_missing_config_raises(self):
+        from etlai.registry import _load_step_config
 
-    def test_resolve_user_form(self, tmp_path, monkeypatch):
-        """Test resolving a user-defined form."""
-        from etlai.registry import _resolve_form
-
-        monkeypatch.chdir(tmp_path)
-
-        # Create user form
-        forms_dir = tmp_path / "forms"
-        forms_dir.mkdir()
-
-        custom_form = forms_dir / "custom.py"
-        custom_form.write_text("""
-def configure(file_paths, existing_config):
-    return {"custom": "form"}
-""")
-
-        # Should resolve to user form
-        form_module = _resolve_form("custom", tmp_path)
-
-        assert hasattr(form_module, "configure")
-        result = form_module.configure([], None)
-        assert result == {"custom": "form"}
+        with pytest.raises(RuntimeError, match="No config.json"):
+            _load_step_config(None)
 
 
 class TestExecuteStep:
@@ -138,20 +117,18 @@ class TestExecuteStep:
         input_csv = pipeline_dir / "inbox" / "data.csv"
         input_csv.write_text("id,name\n1,Alice\n")
 
+        # Pre-written config.json (replaces the old form step)
+        (pipeline_dir / "config.json").write_text("{}")
+
         # Mock atom that succeeds
         atom_mod = MagicMock()
         atom_mod.execute.return_value = '{"success": true, "message": "done"}'
-
-        # Mock form that returns config
-        form_mod = MagicMock()
-        form_mod.configure.return_value = {"input_file": str(input_csv)}
 
         folders = PipelineFolders("test_pipe")
 
         # Should NOT raise AttributeError: 'NoneType' object has no attribute 'get'
         result = _execute_step(
             atom_module=atom_mod,
-            form_module=form_mod,
             folders=folders,
             pipeline_name="test_pipe",
             step_index=0,
@@ -177,11 +154,10 @@ class TestExecuteStep:
         input_csv = pipeline_dir / "inbox" / "data.csv"
         input_csv.write_text("id,name\n1,Alice\n")
 
+        (pipeline_dir / "config.json").write_text("{}")
+
         atom_mod = MagicMock()
         atom_mod.execute.return_value = '{"success": true, "message": "done"}'
-
-        form_mod = MagicMock()
-        form_mod.configure.return_value = {"input_file": str(input_csv)}
 
         folders = PipelineFolders("test_pipe")
 
@@ -191,7 +167,6 @@ class TestExecuteStep:
 
         result = _execute_step(
             atom_module=atom_mod,
-            form_module=form_mod,
             folders=folders,
             pipeline_name="test_pipe",
             step_index=0,
@@ -201,6 +176,41 @@ class TestExecuteStep:
             context=mock_context,
         )
         assert result is not None
+
+    def test_execute_step_missing_config_rejects(self, tmp_path, monkeypatch):
+        """A step with no config.json rejects the files and raises."""
+        from unittest.mock import MagicMock
+        from etlai.registry import _execute_step
+        from etlai.helpers.folders import PipelineFolders
+
+        monkeypatch.chdir(tmp_path)
+
+        pipeline_dir = tmp_path / "pipelines" / "test_pipe"
+        for d in ["inbox", "staging", "processed", "rejected", "output", "reference"]:
+            (pipeline_dir / d).mkdir(parents=True)
+
+        input_csv = pipeline_dir / "inbox" / "data.csv"
+        input_csv.write_text("id,name\n1,Alice\n")
+
+        atom_mod = MagicMock()
+
+        folders = PipelineFolders("test_pipe")
+
+        with pytest.raises(RuntimeError, match="No config.json"):
+            _execute_step(
+                atom_module=atom_mod,
+                folders=folders,
+                pipeline_name="test_pipe",
+                step_index=0,
+                file_paths=[str(input_csv)],
+                is_first=True,
+                is_last=True,
+                context=None,
+            )
+
+        # Atom never ran; files were moved to rejected
+        atom_mod.execute.assert_not_called()
+        assert (pipeline_dir / "rejected" / "data.csv").exists()
 
     def test_execute_step_injects_reference_via_inject_as(self, tmp_path, monkeypatch):
         """inject_as in input_metadata resolves reference file path into config param."""
@@ -222,19 +232,20 @@ class TestExecuteStep:
         input_csv = pipeline_dir / "inbox" / "sales.csv"
         input_csv.write_text("sku,qty\nA,5\n")
 
+        # Pre-written config.json (replaces the old form step)
+        (pipeline_dir / "config.json").write_text(
+            json.dumps({"left_column": "sku", "right_column": "sku"})
+        )
+
         # Atom captures the config it receives
         received_config = {}
 
         def mock_execute(params_json):
-            import json
             received_config.update(json.loads(params_json))
             return '{"success": true, "message": "done"}'
 
         atom_mod = MagicMock()
         atom_mod.execute.side_effect = mock_execute
-
-        form_mod = MagicMock()
-        form_mod.configure.return_value = {"left_column": "sku", "right_column": "sku"}
 
         folders = PipelineFolders("test_pipe")
 
@@ -251,7 +262,6 @@ class TestExecuteStep:
 
         _execute_step(
             atom_module=atom_mod,
-            form_module=form_mod,
             folders=folders,
             pipeline_name="test_pipe",
             step_index=0,
@@ -284,18 +294,18 @@ class TestExecuteStep:
         input_csv = pipeline_dir / "inbox" / "sales.csv"
         input_csv.write_text("sku,qty\nA,5\n")
 
+        (pipeline_dir / "config.json").write_text(
+            json.dumps({"left_column": "sku", "right_column": "sku"})
+        )
+
         received_config = {}
 
         def mock_execute(params_json):
-            import json
             received_config.update(json.loads(params_json))
             return '{"success": true, "message": "done"}'
 
         atom_mod = MagicMock()
         atom_mod.execute.side_effect = mock_execute
-
-        form_mod = MagicMock()
-        form_mod.configure.return_value = {"left_column": "sku", "right_column": "sku"}
 
         folders = PipelineFolders("test_pipe")
 
@@ -312,7 +322,6 @@ class TestExecuteStep:
 
         _execute_step(
             atom_module=atom_mod,
-            form_module=form_mod,
             folders=folders,
             pipeline_name="test_pipe",
             step_index=0,
@@ -347,18 +356,16 @@ class TestExecuteStep:
         input_csv = pipeline_dir / "inbox" / "data.csv"
         input_csv.write_text("sku,qty\nA,5\n")
 
+        (pipeline_dir / "config.json").write_text(json.dumps({"left_column": "sku"}))
+
         received_config = {}
 
         def mock_execute(params_json):
-            import json
             received_config.update(json.loads(params_json))
             return '{"success": true, "message": "done"}'
 
         atom_mod = MagicMock()
         atom_mod.execute.side_effect = mock_execute
-
-        form_mod = MagicMock()
-        form_mod.configure.return_value = {"left_column": "sku"}
 
         folders = PipelineFolders("test_pipe")
 
@@ -374,7 +381,6 @@ class TestExecuteStep:
 
         _execute_step(
             atom_module=atom_mod,
-            form_module=form_mod,
             folders=folders,
             pipeline_name="test_pipe",
             step_index=0,
@@ -407,10 +413,10 @@ class TestInputFrom:
             "name": "branching_pipe",
             "min_files": 1,
             "steps": [
-                {"atom": "computed_column", "form": "passthrough"},
-                {"atom": "rename_columns", "form": "passthrough", "name": "detail"},
-                {"atom": "group_aggregate", "form": "passthrough", "input_from": 0},
-                {"atom": "rename_columns", "form": "passthrough"},
+                {"atom": "computed_column"},
+                {"atom": "rename_columns", "name": "detail"},
+                {"atom": "group_aggregate", "input_from": 0},
+                {"atom": "rename_columns"},
             ],
         }
 
@@ -527,7 +533,6 @@ class TestStep0ConfigRegression:
             (pipeline_dir / d).mkdir(parents=True)
 
         # Write config with params at top level (no step_0 key)
-        import json
         config_path = pipeline_dir / "config.json"
         config_path.write_text(json.dumps({
             "left_column": "sku",
@@ -547,16 +552,10 @@ class TestStep0ConfigRegression:
         atom_mod = MagicMock()
         atom_mod.execute.side_effect = mock_execute
 
-        form_mod = MagicMock()
-        form_mod.configure.return_value = {
-            "left_column": "sku", "right_column": "sku"
-        }
-
         folders = PipelineFolders("test_pipe")
 
         _execute_step(
             atom_module=atom_mod,
-            form_module=form_mod,
             folders=folders,
             pipeline_name="test_pipe",
             step_index=0,
@@ -593,7 +592,6 @@ class TestMidPipelineJoinRegression:
         prev_output_file = pipeline_dir / "output" / "_intermediate_0.csv"
         prev_output_file.write_text("sku,qty\nA,5\n")
 
-        import json
         config_path = pipeline_dir / "config.json"
         config_path.write_text(json.dumps({
             "left_column": "sku",
@@ -610,9 +608,6 @@ class TestMidPipelineJoinRegression:
         atom_mod = MagicMock()
         atom_mod.execute.side_effect = mock_execute
 
-        form_mod = MagicMock()
-        form_mod.configure.return_value = {"left_column": "sku", "right_column": "sku"}
-
         folders = PipelineFolders("test_pipe")
 
         input_metadata = [
@@ -627,7 +622,6 @@ class TestMidPipelineJoinRegression:
 
         _execute_step(
             atom_module=atom_mod,
-            form_module=form_mod,
             folders=folders,
             pipeline_name="test_pipe",
             step_index=1,
@@ -662,7 +656,6 @@ class TestMidPipelineJoinRegression:
         prev_output_file = pipeline_dir / "output" / "_intermediate_0.csv"
         prev_output_file.write_text("sku,qty\nA,5\n")
 
-        import json
         config_path = pipeline_dir / "config.json"
         config_path.write_text(json.dumps({
             "left_column": "sku",
@@ -678,14 +671,10 @@ class TestMidPipelineJoinRegression:
         atom_mod = MagicMock()
         atom_mod.execute.side_effect = mock_execute
 
-        form_mod = MagicMock()
-        form_mod.configure.return_value = {"expression": "a * b", "output_column": "result"}
-
         folders = PipelineFolders("test_pipe")
 
         _execute_step(
             atom_module=atom_mod,
-            form_module=form_mod,
             folders=folders,
             pipeline_name="test_pipe",
             step_index=1,

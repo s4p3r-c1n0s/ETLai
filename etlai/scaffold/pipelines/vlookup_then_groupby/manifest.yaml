@@ -15,14 +15,11 @@ inputs:
 
 steps:
   - atom: vlookup
-    form: passthrough
     inputs_map:
       - param: left_file
       - param: right_file
   - atom: groupby
-    form: passthrough
   - atom: rename_columns
-    form: passthrough
 
 trigger:
   rules:
