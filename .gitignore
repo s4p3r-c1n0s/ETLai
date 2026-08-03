@@ -4,10 +4,7 @@ __pycache__/
 *.pyo
 
 # Virtual environment
-bin/
-lib/
-include/
-pyvenv.cfg
+.venv/
 
 # Node
 node_modules/
