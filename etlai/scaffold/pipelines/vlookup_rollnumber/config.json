@@ -1,0 +1,8 @@
+{
+  "step_0": {
+    "left_column": "roll_number",
+    "right_column": "roll_number",
+    "left_output_columns": ["name", "roll_number"],
+    "right_output_columns": ["marks"]
+  }
+}
