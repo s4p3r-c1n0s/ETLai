@@ -1,72 +1,68 @@
 # Workflow — Phase Protocol
 
-This folder governs the 7-phase pipeline creation process. Phases are **strictly sequential**. No phase may begin until the previous phase's artifact file exists and passes its validation checklist.
+This folder holds **phase task cards** (what to produce). Who runs them, who talks to the user, and when gates fire belong to the **control plane** — see [LAYERS.md](LAYERS.md).
+
+## Layer reminder
+
+| Concern | Where |
+|---------|--------|
+| What (task contract) | `phase_N_*.md`, `templates/` |
+| Access policy (optional role) | `../agents/*_SYSTEM_PROMPT.md` |
+| When / user channel / gates | Orchestrator + `../ORCHESTRATION.md` + `etlai/orchestrator.py` |
 
 ## Phase Sequence
 
 | Phase | Name | Artifact Produced | Gate |
-|-------|------|-------------------|------|
-| 0 | Dejargon | `pipeline_graph.yaml` (partial) | User's request fully expanded |
-| 1 | Business Process Graph | `pipeline_graph.yaml` (complete) | `owner_confirmed: true` via Orchestrator.confirm_graph |
-| 2 | Separation | `logical_graph.yaml` + `business_mapping.json` | Zero domain terms in logical_graph |
-| 3 | Atomize | `atomic_operations.yaml` | One verb per entry, valid DAG |
-| 4 | Match | `match_results.yaml` | Every operation mapped |
-| 5 | Create Atom | New atom files in `atoms/` | Only for operations marked "create" |
-| 6 | Assemble | `manifest.yaml` + `config.json` | Pipeline passes `etlai sync` |
-| 7 | Rehydrate | Final step wired in manifest | Output columns use business names |
+|------:|------|-------------------|------|
+| 0 | Dejargon | `pipeline_graph.yaml` (partial) + optional `ba_questions.json` | Open questions resolved via control plane |
+| 1 | Business Process Graph | `pipeline_graph.yaml` (complete, then confirmed) | `gate_1` after `owner_confirmed: true` |
+| 2 | Separation | `logical_graph.yaml` + `business_mapping.json` | `gate_2` |
+| 3 | Atomize | `atomic_operations.yaml` | `gate_3` |
+| 4 | Match | `match_results.yaml` | `gate_4` |
+| 5 | Create Atom | `atoms/<name>.py` (+ tests) | `gate_5` |
+| 6 | Assemble | `manifest.yaml` + `config.json` | (with phase 7) |
+| 7 | Rehydrate | Final `rename_columns` mapping | `gate_6` |
 
-## Sequencing Rules
+## Sequencing Rules (control plane)
 
-1. Phases 0 and 1 LOOP with the user **through the Orchestrator**. The Business Analyst is a worker (drafts graph + proposes questions); only the Orchestrator talks to the user and sets `owner_confirmed` via `confirm_graph`. Do not exit Phase 1 until the user explicitly confirms the graph to the Orchestrator.
-2. Phase 2 onward does NOT loop back to the user. All ambiguity must be resolved in Phases 0-1.
-3. Each phase reads its detailed instructions from `workflow/phase_N_<name>.md`.
-4. Each phase writes its artifact to the pipeline's working directory: `pipelines/<name>/workflow/`.
-5. Before starting any phase, validate that the previous artifact exists and passes its checklist.
+1. Phases are **strictly sequential**. Do not start phase N until phase N−1 artifacts exist and prior gates pass.
+2. Phases 0–1 may require clarifying answers. The **control plane** collects those answers and re-invokes the phase card; phase cards never own a user session.
+3. Only the control plane sets `owner_confirmed: true` (via `confirm_graph`) after explicit user assent.
+4. Phase 2 onward does not request user input. Ambiguity must already be resolved.
+5. Each invoke should load **one** `phase_N_*.md` (plus its template), not a bundle of agent + all phases.
+6. Artifacts write under `pipelines/<name>/workflow/` (final manifest/config under `pipelines/<name>/`).
+7. Never send `business_mapping.json` into atom-creation invokes (firewall).
 
 ## DO NOT
 
 - Run phases in parallel.
-- Produce code (atom or pipeline) before Phase 4 is complete.
-- Ask the user questions after Phase 1 is confirmed complete.
-- Backtrack to Phase 0-1 from Phase 3+. If something is unclear, the graph was incomplete — this is a failure state, not a normal flow.
-- Skip Phase 4 (match). Even if you "know" no atom exists, the search must be performed and documented.
-- Send `business_mapping.json` content to any step that creates atom code.
+- Produce atom or pipeline code before Phase 4 match is complete.
+- Put agent names, spawn/retry policy, or confirmation ownership inside `phase_N_*.md`.
+- Duplicate phase process steps inside role system prompts.
+- Backtrack to Phase 0–1 from Phase 3+ (treat as failure / restart).
+- Skip Phase 4.
 
 ## Gate Validators
 
-Each phase transition has a deterministic validator script. Run BEFORE proceeding to the next phase.
-These are structural checks — they catch missing fields, domain leakage, broken DAGs, and missing files.
-They do NOT replace semantic judgment (that's the LLM's job during each phase).
+Deterministic scripts — structural only. Run before advancing.
 
 ```bash
-# After Phase 1 (before starting Phase 2):
 python workflow/validators/gate_1_graph_complete.py pipelines/<name>/
-
-# After Phase 2 (before starting Phase 3):
 python workflow/validators/gate_2_no_leakage.py pipelines/<name>/
-
-# After Phase 3 (before starting Phase 4):
 python workflow/validators/gate_3_dag_valid.py pipelines/<name>/
-
-# After Phase 4 (before starting Phase 5):
 python workflow/validators/gate_4_match_coverage.py pipelines/<name>/ .
-
-# After Phase 5 (before starting Phase 6):
 python workflow/validators/gate_5_atom_clean.py pipelines/<name>/ .
-
-# After Phase 6 (final check):
 python workflow/validators/gate_6_manifest_valid.py pipelines/<name>/ .
 ```
 
-**Rule: If a gate validator returns FAIL, do NOT proceed. Fix all errors first.**
-
-Validators return exit code 0 (PASS) or 1 (FAIL) with specific error messages.
+Exit 0 = PASS, 1 = FAIL. On FAIL, fix artifacts before proceeding.
 
 ## Artifact Storage
 
-All intermediate artifacts live in:
 ```
 pipelines/<pipeline_name>/workflow/
+├── ba_session.json          # control-plane mediation state
+├── ba_questions.json        # clarifying questions artifact (phases 0–1)
 ├── pipeline_graph.yaml
 ├── logical_graph.yaml
 ├── business_mapping.json
@@ -74,25 +70,18 @@ pipelines/<pipeline_name>/workflow/
 └── match_results.yaml
 ```
 
-Final outputs (manifest.yaml, config.json) go in `pipelines/<pipeline_name>/` as normal.
-New atoms go in `atoms/` at project root.
+Schemas: `workflow/templates/`.
 
-## Template Reference
+## Role packaging (optional)
 
-Schema definitions for all artifacts: `workflow/templates/`
+Roles are a **routing convenience**, not the unit of work. Default packaging:
 
-Every artifact MUST conform to its template schema. Missing required fields = incomplete artifact = gate not passed.
+| Phases | Role wrapper |
+|--------|----------------|
+| 0–1 | Business Analyst (worker) |
+| 2–3 | Separator |
+| 4–5 | Atom Smith (firewalled) |
+| 6–7 | Assembler |
+| All | Orchestrator (control plane) |
 
-## 5-Agent Mode
-
-The 7-phase workflow can be executed manually (one LLM session doing all phases) or via the **5-agent system** where specialized agents handle specific phases:
-
-- Phases 0-1 → Business Analyst worker (Orchestrator mediates user Q&A and confirmation)
-- Phases 2-3 → Separator agent (mechanical, no user interaction)
-- Phases 4-5 → Atom Smith agent (firewalled from business_mapping.json)
-- Phases 6-7 → Assembler agent (wires final pipeline)
-- Orchestrator routes between agents and validates gates
-
-Agent system prompts: `../agents/`
-
-The phase files, gate validators, and artifact schemas are identical in both modes. The agents simply automate who-does-what and enforce the firewall.
+Tomorrow’s multi-backend router may invoke phase/sub-steps without these role names. Phase cards stay the source of truth.

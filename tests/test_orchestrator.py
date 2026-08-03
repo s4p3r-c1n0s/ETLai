@@ -232,6 +232,8 @@ class TestBAMediation:
         assert "owner_confirmed: false" in prompt
         assert "Do NOT set owner_confirmed: true" in prompt
         assert "do NOT talk to the user" in prompt
+        assert "phase_0_dejargon.md" in prompt
+        assert "LAYERS.md" in prompt
 
     def test_ba_turn_prompt_includes_feedback_and_gate_errors(self, orch):
         orch.start_ba_session("build a report")
@@ -310,14 +312,25 @@ class TestBAMediation:
         assert status.owner_confirmed is False
 
     def test_prompt_contracts_in_scaffold(self, orch):
-        """BA prompt forbids confirm; Orchestrator prompt requires mediation."""
+        """Role policies stay thin; phase cards stay agent-free; control owns confirm."""
         agents = orch._find_agents_dir()
+        workflow = orch._find_scaffold_workflow_dir()
         ba = (agents / "BUSINESS_ANALYST_SYSTEM_PROMPT.md").read_text()
         orch_prompt = (agents / "ORCHESTRATOR_SYSTEM_PROMPT.md").read_text()
-        assert "FORBIDDEN" in ba
+        phase0 = (workflow / "phase_0_dejargon.md").read_text()
+        phase1 = (workflow / "phase_1_graph.md").read_text()
+        layers = (workflow / "LAYERS.md").read_text()
+
+        assert "Role Policy" in ba or "Access" in ba
         assert "owner_confirmed: true" in ba
         assert "confirm_graph" in orch_prompt
-        assert "user channel" in orch_prompt.lower()
+        assert "one phase" in orch_prompt.lower() or "exactly one phase" in orch_prompt.lower()
+        assert "phases = *what*" in layers
+
+        for text, label in ((phase0, "phase_0"), (phase1, "phase_1")):
+            assert "Orchestrator" not in text, f"{label} must not name Orchestrator"
+            assert "Business Analyst" not in text, f"{label} must not name BA"
+            assert "you have no user session" not in text.lower()
 
 
 class TestSanitizePipelineName:

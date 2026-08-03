@@ -250,3 +250,33 @@ Claude Code hides files by renaming. For Aider, the equivalent is:
 Orchestrator owns the user channel for phases 0–1. BA is a worker that drafts `pipeline_graph.yaml` with `owner_confirmed: false` and proposes questions in `ba_questions.json`. Only `Orchestrator.confirm_graph(True)` may set confirmation after explicit user assent. `prepare_gate1()` strips BA-self-confirmed graphs.
 
 ---
+
+## 8. ~~Detangle phase playbooks from role prompts~~ RESOLVED
+
+**Fixed in:** `etlai/scaffold/workflow/LAYERS.md`, thinned `agents/*_SYSTEM_PROMPT.md`, purified `phase_0`/`phase_1`, control plane kept in Orchestrator/`ORCHESTRATION.md`.
+
+**Rule:** phases = *what* (task I/O); roles = access policy only; Orchestrator = when / user channel / gates. Compose turn packets at runtime — required for small-model / multi-backend (item #5).
+
+---
+
+## 9. Atom Smith firewall gaps
+
+**Files:** `etlai/orchestrator.py` (`activate_firewall` / `deactivate_firewall`), `etlai/cli.py` (`etlai create`), `etlai/scaffold/workflow/validators/gate_5_atom_clean.py`, `etlai/scaffold/ORCHESTRATION.md`
+
+**How it works today:** Three layers — (1) physical rename of `business_mapping.json` → `.business_mapping.json.firewalled` during Atom Smith, (2) soft allowlist via `build_agent_context("atom_smith")` + prompt instructions, (3) Gate 5 post-check for domain terms in new atom source.
+
+**Problems:**
+
+1. **`pipeline_graph.yaml` is not physically firewalled.** Docs claim Atom Smith is blocked from both mapping and pipeline graph, but only the mapping is renamed. The graph stays on disk; soft allowlist/prompt is the only barrier.
+2. **Gate 5 runs while the firewall is still active.** Gate 5 needs `business_mapping.json` to collect real names for leakage detection. `etlai create` and ORCHESTRATION run gates 4+5 before `deactivate_firewall()`, so when the mapping is hidden Gate 5 skips the leakage scan (`if mapping_path.exists()` → empty `real_names`).
+3. **Crash leaves mapping hidden.** `_firewall_active` is in-memory; a crash between activate and deactivate leaves `.business_mapping.json.firewalled` with no restored `business_mapping.json`.
+4. **Dotfile hide is shallow.** Renaming in the same directory does not stop tools that list/open hidden files; it is not a sandbox.
+
+**Fix:**
+- Physically hide (or move out of project tree) both `business_mapping.json` and `pipeline_graph.yaml` during Atom Smith — or teach Gate 5 to read the firewalled path.
+- Deactivate firewall before Gate 5, **or** point Gate 5 at `.business_mapping.json.firewalled` while the firewall is up.
+- Add crash-safe restore (try/finally in CLI + `etlai create --restore-firewall` / status check on startup).
+
+**When:** Before relying on `etlai create` / multi-agent flow for real domain-sensitive pipelines. Related to privacy goals in item #5.
+
+---

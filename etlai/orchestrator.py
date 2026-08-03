@@ -165,43 +165,44 @@ class Orchestrator:
         user_feedback: str | None = None,
         gate_errors: list[str] | None = None,
     ) -> str:
-        """Build instructions for one BA worker turn.
+        """Build a control-plane turn packet for one BA worker invoke.
 
-        BA must never set owner_confirmed. Orchestrator relays questions to the
-        user and alone calls confirm_graph() after explicit assent.
+        Composes: thin role policy + phase playbook paths + artifact paths.
+        Worker must never set owner_confirmed; only confirm_graph() may.
         """
         session = self._read_ba_session()
         next_round = int(session.get("round", 0)) + 1
         ctx = self.build_agent_context("business_analyst")
+        workflow_dir_scaffold = self._find_scaffold_workflow_dir()
         graph_path = self.workflow_dir / "pipeline_graph.yaml"
         questions_path = self.ba_questions_path
 
         lines = [
-            "You are the Business Analyst worker for ETLai (one turn).",
-            "The Orchestrator owns the user channel — you do NOT talk to the user.",
+            "You are executing one Business Analyst worker turn (control-plane mediated).",
+            "You do NOT talk to the user. Follow ONLY the assigned phase playbook for task how-to.",
             "",
-            f"Read system prompt: {ctx['system_prompt']}",
-            "Read phase playbooks and template listed in your readable_files.",
+            f"Role policy: {ctx['system_prompt']}",
+            "Phase playbooks (execute the relevant one for this turn — prefer a single phase):",
+            f"  - {workflow_dir_scaffold / 'phase_0_dejargon.md'}",
+            f"  - {workflow_dir_scaffold / 'phase_1_graph.md'}",
+            f"Template: {workflow_dir_scaffold / 'templates' / 'pipeline_graph.yaml'}",
+            f"Layers: {workflow_dir_scaffold / 'LAYERS.md'}",
             f"User request: {session.get('user_request', '')}",
             f"Turn / round: {next_round} (max {session.get('max_rounds', MAX_BA_ROUNDS)})",
             "",
-            "Your job this turn:",
-            "1. Draft or revise pipeline_graph.yaml (domain content only).",
-            f"2. Write it to: {graph_path}",
-            "3. ALWAYS set owner_confirmed: false in that YAML.",
-            f"4. If anything is unclear, write clarifying questions to: {questions_path}",
-            "   Format: JSON list of strings, or {\"questions\": [\"...\"]}.",
-            "5. If the graph looks complete and ready for user confirmation, write",
-            "   questions as [] (empty) so the Orchestrator can ask the user to confirm.",
+            "Write:",
+            f"  - {graph_path}  (always owner_confirmed: false)",
+            f"  - {questions_path}  (JSON list or {{\"questions\": [...]}}; empty when ready to confirm)",
             "",
             "FORBIDDEN:",
-            "- Do NOT set owner_confirmed: true (Orchestrator owns confirmation).",
-            "- Do NOT ask the user questions directly (Orchestrator will relay).",
-            "- Do NOT proceed to other phases.",
+            "- Do NOT set owner_confirmed: true (control plane confirm_graph only).",
+            "- Do NOT ask the user questions directly.",
+            "- Do NOT proceed to phase 2+ or write atoms/manifest/config.",
+            "- Do NOT restate a custom process — use the phase playbook.",
         ]
 
         if user_feedback:
-            lines.extend(["", "User answers / feedback (relayed by Orchestrator):", user_feedback])
+            lines.extend(["", "Answered questions / feedback (from control plane):", user_feedback])
 
         history = session.get("answer_history") or []
         if history and not user_feedback:
@@ -530,6 +531,7 @@ class Orchestrator:
             "business_analyst": {
                 "system_prompt": agents_dir / "BUSINESS_ANALYST_SYSTEM_PROMPT.md",
                 "readable_files": [
+                    workflow_dir_scaffold / "LAYERS.md",
                     workflow_dir_scaffold / "phase_0_dejargon.md",
                     workflow_dir_scaffold / "phase_1_graph.md",
                     workflow_dir_scaffold / "templates" / "pipeline_graph.yaml",

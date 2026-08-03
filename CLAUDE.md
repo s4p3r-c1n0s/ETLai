@@ -25,6 +25,11 @@ Guidance for coding agents working in this repository.
 
 - [Agent Build Roadmap](docs/AGENT_BUILD_ROADMAP.md) — 6-step implementation plan
 - [Agent Implementation Plan](docs/AGENT_IMPLEMENTATION_PLAN.md) — Detailed agent contracts
+- [Phase Dependency Graph](docs/PHASE_DEPENDENCY_GRAPH.md) — Phase I/O and dependencies
+
+### Scaffold contracts
+
+- [Layer contracts](etlai/scaffold/workflow/LAYERS.md) — phase vs role vs control plane
 
 ### Design Explorations (in docs/)
 

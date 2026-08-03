@@ -42,9 +42,10 @@ Pipelines are NOT created ad-hoc. Every pipeline goes through this mandatory seq
 | 6 | Assemble: wire manifest.yaml + config.json | `manifest.yaml` + `config.json` | `gate_6_manifest_valid.py` |
 | 7 | Rehydrate: rename output columns to business names | Final step in manifest | — |
 
-**Detailed instructions for each phase:** `workflow/phase_N_<name>.md`
+**Detailed instructions for each phase:** `workflow/phase_N_<name>.md` (task contracts only — see `workflow/LAYERS.md`)
 **Artifact schemas:** `workflow/templates/`
 **Gate validators:** `workflow/validators/gate_N_<name>.py`
+**Layer rule:** phases = *what*; role prompts = access policy; Orchestrator = when / user / gates.
 
 ### Phase Rules
 
@@ -73,6 +74,7 @@ Pipelines are NOT created ad-hoc. Every pipeline goes through this mandatory seq
 
 | When you are... | Read this |
 |----------------|-----------|
+| Understanding phase vs role vs control plane | `workflow/LAYERS.md` |
 | Creating a pipeline via agents | `ORCHESTRATION.md` (the full script, follow step by step) |
 | Creating a new pipeline (manual) | `workflow/CLAUDE.md` → then the relevant `phase_N.md` |
 | Understanding agent roles | `HOW_TO_USE_AGENTS.md` |

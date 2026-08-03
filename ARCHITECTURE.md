@@ -243,6 +243,8 @@ business_mapping.json ──► Separator produces it
 
 **Confirmation ownership:** Only `Orchestrator.confirm_graph(True)` may set `owner_confirmed: true` on `pipeline_graph.yaml` after explicit user assent. BA always writes `owner_confirmed: false`.
 
+**Layer separation:** Phase playbooks (`workflow/phase_N_*.md`) are task contracts only. Role prompts are thin access policies. Orchestrator composes turn packets (see `etlai/scaffold/workflow/LAYERS.md`). Required for small-model / multi-backend execution.
+
 ### Gate Validators
 
 Deterministic scripts that validate artifacts between phases:
