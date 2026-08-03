@@ -47,6 +47,7 @@ tests/
 ├── test_forms.py            # ✅ Form contract tests (created)
 ├── test_registry.py         # ✅ Manifest loading, job building, inject_as, input_from
 ├── test_helpers.py          # ✅ Folder, config, env helpers (created)
+├── test_input_resolver.py   # ✅ InputResolver: fallback heuristic + explicit inputs_map
 ├── test_orchestrator.py     # ✅ Gate runner, firewall, context building, phase status
 ├── test_sensors.py          # TODO (partially covered in registry tests)
 ├── test_cli.py              # TODO (future phase)
@@ -235,10 +236,11 @@ chmod +x .githooks/*
 | Registry | ✅ | 85%+ | ✅ Done (manifest loading, resolution, triggers, execute_step, inject_as, input_from, mid-pipeline joins) |
 | Helpers | ✅ | 90%+ | ✅ Done (config_store, env_loader, folders) |
 | Inputs | ✅ | 90%+ | ✅ Done (validation, README gen, min_files calc) |
+| InputResolver | ✅ | 95%+ | ✅ Done (fallback heuristic, explicit N-file mapping, continuation) |
 | Orchestrator | ✅ | 85%+ | ✅ Done (gate runner, firewall, agent context, phase status, pipeline naming) |
 | Sensors | ⬜ | 80%+ | TODO (covered partially in registry tests) |
 | CLI | ⬜ | 60%+ | TODO |
-| **Overall** | **104 tests** | **80%+** | **✅ Comprehensive coverage** |
+| **Overall** | **118 tests** | **80%+** | **✅ Comprehensive coverage** |
 
 Check actual coverage: `pip install -e ".[dev]"` then `pytest --cov=etlai --cov-report=html`
 

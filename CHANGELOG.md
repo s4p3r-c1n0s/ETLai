@@ -4,6 +4,17 @@ All notable changes to ETLai are documented here.
 
 ## [Unreleased]
 
+## [0.5.2] — 2026-08-03
+
+### Added
+- `InputResolver` class (`etlai/helpers/input_resolver.py`): replaces inline file injection heuristic
+- `inputs_map` field in manifest steps: explicit mapping of inbox files to atom params (supports N files)
+- `vlookup_then_groupby` scaffold example: full 7-phase workflow artifacts included
+
+### Changed
+- Extracted file/path injection logic from `registry.py:_execute_step` into `InputResolver`
+- `vlookup_then_groupby` pipeline: added manifest.yaml, fixed config.json structure, added rehydration step
+
 ## [0.5.1] — 2026-07-31
 
 ### Added

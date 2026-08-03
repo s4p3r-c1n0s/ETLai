@@ -13,6 +13,7 @@ from dagster import Definitions, In, OpExecutionContext, Out, ScheduleDefinition
 from etlai.helpers.config_store import config_exists, load_config, save_config
 from etlai.helpers.env_loader import load_env_file
 from etlai.helpers.folders import PipelineFolders
+from etlai.helpers.input_resolver import InputResolver
 from etlai.helpers.notifier import notify
 from etlai.sensors.hot_folder_sensor import build_hot_folder_sensor
 
@@ -192,6 +193,7 @@ def _execute_step(
     context=None,
     input_metadata: list[dict] | None = None,
     step_name: str | None = None,
+    inputs_map: list[dict] | None = None,
 ):
     """Shared logic for configuring and executing a single step (used by single and composite jobs).
 
@@ -256,21 +258,14 @@ def _execute_step(
                     config[param_name] = matched[0]
 
     # Inject file paths or previous output (AFTER inject_as, so we know what's already set)
-    if is_first:
-        if file_paths and "left_file" not in config and "input_file" not in config and "input_files" not in config:
-            if len(file_paths) >= 2:
-                config["left_file"] = file_paths[0]
-                config["right_file"] = file_paths[1]
-            elif "right_file" in config:
-                config["left_file"] = file_paths[0]
-            else:
-                config["input_file"] = file_paths[0]
-    else:
-        if "left_file" not in config and "input_file" not in config:
-            if "right_file" in config:
-                config["left_file"] = prev_output
-            else:
-                config["input_file"] = prev_output
+    _resolver = InputResolver()
+    _resolver.resolve(
+        is_first=is_first,
+        file_paths=file_paths,
+        prev_output=prev_output,
+        config=config,
+        inputs_map=inputs_map,
+    )
 
     # Determine target path: use step_name if provided (Option B: named steps),
     # otherwise use default naming (Option A: index-based)
@@ -427,7 +422,9 @@ def _build_composite_job(manifest: dict, project_root: Path):
         is_first = (i == 0)
         is_last = (i == len(steps) - 1)
 
-        def _make_step_op(atom_mod, form_mod, op_name, step_index, first, last, sname):
+        step_inputs_map = step.get("inputs_map")
+
+        def _make_step_op(atom_mod, form_mod, op_name, step_index, first, last, sname, imap):
             if first:
                 @op(name=op_name, ins={"file_paths": In(list)}, out={"output_path": Out()})
                 def _step(context: OpExecutionContext, file_paths: list[str]) -> str:
@@ -443,6 +440,7 @@ def _build_composite_job(manifest: dict, project_root: Path):
                         context=context,
                         input_metadata=input_metadata,
                         step_name=sname,
+                        inputs_map=imap,
                     )
             else:
                 @op(name=op_name, ins={"file_paths": In(list), "prev_output": In(str)}, out={"output_path": Out()})
@@ -460,11 +458,12 @@ def _build_composite_job(manifest: dict, project_root: Path):
                         context=context,
                         input_metadata=input_metadata,
                         step_name=sname,
+                        inputs_map=imap,
                     )
 
             return _step
 
-        step_ops.append(_make_step_op(atom_module, form_module, step_op_name, i, is_first, is_last, step_name))
+        step_ops.append(_make_step_op(atom_module, form_module, step_op_name, i, is_first, is_last, step_name, step_inputs_map))
 
     @job(name=pipeline_name)
     def _composite_job():
