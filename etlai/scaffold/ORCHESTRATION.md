@@ -1,382 +1,87 @@
-# Pipeline Creation Orchestration Script
+# Orchestration — how to call the Code control plane
 
-**When a user asks you to create a pipeline, follow this script exactly.**
+**The control plane is Python**, not this document and not an LLM agent.
 
-You are the **control plane**. You compose turn packets, validate gates, and enforce the firewall. You do NOT write atoms, config, or business logic yourself.
+Source of truth: `etlai.orchestrator.Orchestrator` + `etlai create`  
+Layer rule: `workflow/LAYERS.md` · TECH_DEBT #11
 
-**Layer rule:** `workflow/LAYERS.md` — phases = what; roles = access policy; you = when/user/gates.  
-Each worker invoke = thin role policy + **one** phase playbook + template + paths.
+This file is a **transitional shim** for coding assistants (Claude Code, etc.).  
+You **call** the APIs below. You do **not** invent the next phase, set `owner_confirmed`, or skip gates.
 
 ---
 
-## Prerequisites
+## Preferred path: CLI
+
+```bash
+etlai create "join sales with catalog"
+# prints worker briefing for current task_id, then exits waiting for the worker
+
+# after worker writes artifacts:
+etlai create --resume --advance --name <pipeline> "join sales with catalog"
+
+# confirm step (interactive TTY) or:
+# Orchestrator.confirm_graph(True) then --resume
+```
+
+Flags:
+
+| Flag | Meaning |
+|------|---------|
+| `--resume` | Continue `workflow/control_session.json` (do not reset) |
+| `--advance` | `submit_worker()` + advance when artifacts ready |
+| `--no-confirm` | Non-interactive; you must call `confirm_graph` yourself |
+| `--name` | Pipeline name |
+
+---
+
+## Python API (same Code loop)
 
 ```python
 from pathlib import Path
 from etlai.orchestrator import Orchestrator, sanitize_pipeline_name
 
-project_root = Path(".")  # or wherever etlai.yaml lives
-```
-
----
-
-## Step 1: Initialize
-
-```python
-pipeline_name = sanitize_pipeline_name(user_request)  # or ask user for name
+project_root = Path(".")
+pipeline_name = sanitize_pipeline_name(user_request)
 orch = Orchestrator(project_root=project_root, pipeline_name=pipeline_name)
-workflow_dir = orch.initialize()
+
+orch.start_control_session(user_request)
+# orch.current_task_id → "phase_0"
+print(orch.worker_briefing())          # give to worker LLM
+# ... worker writes artifacts ...
+orch.submit_worker()
+orch.advance()                         # → phase_1, etc.
+
+# after phase_1 draft ready:
+orch.confirm_graph(True)               # only Code may confirm
+orch.advance()                         # → gate_1
+
+result = orch.run_current_gate()
+orch.advance_after_gate(result)        # advance or retry
 ```
 
-Tell the user: "Creating pipeline `{pipeline_name}`. I'll ask you some questions to understand what you need."
+### Rules (non-negotiable)
+
+- Workers never set `owner_confirmed: true` — only `confirm_graph(True)`
+- Workers never choose `current_task_id` — only `advance` / `advance_after_gate`
+- Gate failures: `retry()` via `advance_after_gate`; max 3 then escalate to the user
+- Firewall: Code activates on entering `phase_4`, deactivates after `gate_5` pass
 
 ---
 
-## Step 2: Mediate Business Analyst (Phases 0-1)
+## Task sequence (Code-owned)
 
-**You own the user channel.** BA is a worker turn — it does not talk to the user.
-
-```python
-orch.start_ba_session(user_request)
+```text
+phase_0 → phase_1 → confirm → gate_1
+→ phase_2 → phase_3 → gate_2 → gate_3
+→ phase_4 → phase_5 → gate_4 → gate_5
+→ phase_6 → phase_7 → gate_6 → done
 ```
 
-Tell the user: "Creating pipeline `{pipeline_name}`. I'll ask you some questions to understand what you need."
-
-### BA turn loop
-
-```python
-while True:
-    orch.begin_ba_turn()
-    prompt = orch.build_ba_turn_prompt(
-        user_feedback=last_answers,  # None on first turn
-    )
-    # Spawn BA worker with `prompt` (Agent tool). BA writes:
-    #   - pipeline_graph.yaml with owner_confirmed: false
-    #   - ba_questions.json (questions list; empty when ready to confirm)
-
-    status = orch.get_ba_turn_status()
-    if status.questions:
-        # Relay questions to the USER (you ask; BA does not)
-        last_answers = "<user replies>"
-        orch.record_user_answers(last_answers)
-        continue
-
-    # No pending questions → present draft graph to user
-    # Ask: "Is this business process graph complete and correct?"
-    if user_said_yes:
-        orch.confirm_graph(True)  # ONLY Orchestrator sets owner_confirmed
-        break
-    else:
-        last_answers = "<user feedback>"
-        orch.record_user_answers(last_answers)
-```
-
-**FORBIDDEN:** Letting BA set `owner_confirmed: true` or talk to the user directly.
-
-BA worker spawn prompt skeleton:
-
-```
-{orch.build_ba_turn_prompt(user_feedback=...)}
-```
+One worker briefing = one task card (full `TaskPacket` lands in TECH_DEBT #10).
 
 ---
 
-## Step 3: Validate Gate 1
+## Legacy note
 
-```python
-ready, reason = orch.prepare_gate1()
-if not ready:
-    raise RuntimeError(reason)
-
-result = orch.run_gate(1)
-if not result:
-    # Re-prompt BA worker with gate errors (still no user session inside BA)
-    fix_prompt = orch.build_ba_turn_prompt(gate_errors=result.errors)
-    # ... BA fixes graph with owner_confirmed: false ...
-    # Re-confirm with user if needed, then orch.confirm_graph(True)
-    print(f"Gate 1 FAIL: {result.error_summary()}")
-```
-
-Only proceed when gate 1 passes.
-
----
-
-## Step 4: Spawn Separator (Phases 2-3)
-
-Use the **Agent tool** to spawn a subagent with this prompt:
-
-```
-You are the Separator agent for ETLai pipeline creation.
-
-Read the system prompt at: {orch.build_agent_context("separator")["system_prompt"]}
-Read the phase playbooks at:
-- workflow/phase_2_separation.md
-- workflow/phase_3_atomize.md
-
-Read the confirmed pipeline graph at: {workflow_dir}/pipeline_graph.yaml
-
-Your job:
-1. Extract all business terms and create generic placeholders (col_a, threshold_1, etc.)
-2. Write THREE files to {workflow_dir}/:
-   - logical_graph.yaml (zero domain terms)
-   - business_mapping.json (placeholder ↔ real value mapping)
-   - atomic_operations.yaml (single-verb DAG)
-
-Rules:
-- NO domain terms in logical_graph or atomic_operations
-- ALL domain terms go in business_mapping.json
-- Each operation is a single verb (join, compute, group, filter, sort, rename, flag, aggregate)
-- Valid DAG structure (no cycles)
-
-Do NOT ask the user questions. This is mechanical.
-```
-
-**This agent does NOT interact with the user.** Wait for completion.
-
----
-
-## Step 5: Validate Gates 2 + 3
-
-```python
-for gate_num in (2, 3):
-    result = orch.run_gate(gate_num)
-    if not result:
-        # Re-prompt Separator: "Fix these errors: {result.errors}"
-        # Max 3 retries
-```
-
----
-
-## Step 6: Activate Firewall + Spawn Atom Smith (Phases 4-5)
-
-**CRITICAL: Activate firewall BEFORE spawning Atom Smith.**
-
-```python
-orch.activate_firewall()  # hides business_mapping.json
-```
-
-Use the **Agent tool** to spawn a subagent with this prompt:
-
-```
-You are the Atom Smith agent for ETLai pipeline creation.
-
-Read the system prompt at: {orch.build_agent_context("atom_smith")["system_prompt"]}
-Read the phase playbooks at:
-- workflow/phase_4_match.md
-- workflow/phase_5_create.md
-
-Read ONLY: {workflow_dir}/atomic_operations.yaml
-(You have NO access to business_mapping.json or pipeline_graph.yaml — this is enforced.)
-
-Your job:
-1. For each operation, search the shipped atoms list:
-   vlookup, computed_column, group_aggregate, filter_rows, flag_rows,
-   rename_columns, sort_rows, groupby, api_fetch, mock_generate
-2. Match operations to existing atoms where possible
-3. For unmatched operations: write new atoms to atoms/<verb>_<object>.py
-   - Generic column names only (col_a, col_b, never real names)
-   - Must pass litmus test: "rename columns to A,B,C — still works?"
-   - Include tests in tests/test_<verb>_<object>.py
-4. Write match_results.yaml to {workflow_dir}/
-
-Do NOT read business_mapping.json. Do NOT ask the user questions.
-```
-
----
-
-## Step 7: Validate Gates 4 + 5 + Deactivate Firewall
-
-```python
-for gate_num in (4, 5):
-    result = orch.run_gate(gate_num)
-    if not result:
-        # Re-prompt Atom Smith: "Fix these errors: {result.errors}"
-        # Max 3 retries
-
-orch.deactivate_firewall()  # restore business_mapping.json
-```
-
----
-
-## Step 8: Spawn Assembler (Phases 6-7)
-
-Use the **Agent tool** to spawn a subagent with this prompt:
-
-```
-You are the Assembler agent for ETLai pipeline creation.
-
-Read the system prompt at: {orch.build_agent_context("assembler")["system_prompt"]}
-Read the phase playbooks at:
-- workflow/phase_6_assemble.md
-- workflow/phase_7_rehydrate.md
-
-Read ALL four inputs:
-- {workflow_dir}/match_results.yaml
-- {workflow_dir}/business_mapping.json
-- {workflow_dir}/atomic_operations.yaml
-- {workflow_dir}/pipeline_graph.yaml
-
-Also read: pipelines/CLAUDE.md (assembly rules)
-
-Your job:
-1. Linearize the DAG into sequential steps (use input_from for non-linear reads)
-2. Translate ALL generic placeholders to real values from business_mapping.json
-3. Write manifest.yaml to pipelines/{pipeline_name}/manifest.yaml with:
-   - steps (each with atom)
-   - inputs (with inject_as for reference files)
-   - trigger rules
-   - path: ask
-   - min_files
-4. Write config.json to pipelines/{pipeline_name}/config.json with:
-   - step_0, step_1, step_2, … for every step (including step 0)
-   - ZERO placeholders (everything translated to real values)
-5. Final step MUST be rename_columns (rehydration)
-6. Run: etlai sync
-
-Do NOT ask the user questions. Do NOT modify atom code.
-```
-
----
-
-## Step 9: Validate Gate 6
-
-```python
-result = orch.run_gate(6)
-if not result:
-    # Re-prompt Assembler: "Fix these errors: {result.errors}"
-    # Max 3 retries
-```
-
----
-
-## Step 10: Report Success
-
-Tell the user:
-
-```
-Pipeline '{pipeline_name}' created successfully!
-
-Files:
-  pipelines/{pipeline_name}/manifest.yaml
-  pipelines/{pipeline_name}/config.json
-
-Next steps:
-  1. Run: etlai sync (creates folders, validates)
-  2. Place reference files in pipelines/{pipeline_name}/reference/
-  3. Drop transient CSVs into pipelines/{pipeline_name}/inbox/
-  4. Run: etlai run
-```
-
----
-
-## Error Handling
-
-### Gate Failure (max 3 retries per agent)
-
-```python
-MAX_RETRIES = 3
-for attempt in range(MAX_RETRIES):
-    result = orch.run_gate(gate_num)
-    if result:
-        break
-    # Send errors back to the SAME agent:
-    # "Gate {gate_num} FAIL. Fix these errors:\n{result.error_summary()}"
-    # Agent re-reads artifact, fixes, writes corrected version
-else:
-    # Escalate to user after 3 failures
-    print(f"Gate {gate_num} failed after {MAX_RETRIES} attempts.")
-    print(f"Errors: {result.error_summary()}")
-    print("Please review the artifact and provide guidance.")
-```
-
-### Agent Refuses / Produces Wrong Artifact
-
-If an agent produces an artifact that doesn't match expectations:
-1. Check the system prompt was loaded correctly
-2. Check the input files exist
-3. Re-spawn with more explicit instructions
-4. After 3 failures, ask the user for help
-
-### Firewall Breach Attempt
-
-If Atom Smith somehow references `business_mapping.json`:
-- Gate 5 will catch domain leakage in atom code
-- The file is physically renamed, so it can't be read even if attempted
-
----
-
-## Retry Flow Diagram
-
-```
-                  ┌──────────────┐
-                  │ Spawn Agent  │
-                  └──────┬───────┘
-                         │
-                         ▼
-                  ┌──────────────┐
-                  │  Run Gate    │
-                  └──────┬───────┘
-                         │
-                    ┌────┴────┐
-                    │         │
-                  PASS      FAIL
-                    │         │
-                    ▼         ▼
-              ┌─────────┐  ┌─────────────┐
-              │ Next     │  │ Retry < 3?  │
-              │ Phase    │  └──────┬──────┘
-              └─────────┘    YES   │   NO
-                              │    │    │
-                              ▼    │    ▼
-                        ┌─────────┐│ ┌───────────┐
-                        │Re-prompt││ │ Escalate  │
-                        │ Agent   ││ │ to User   │
-                        └────┬────┘│ └───────────┘
-                             │     │
-                             └─────┘
-```
-
----
-
-## Config.json Structure for Assembler
-
-The Assembler must write config.json in this format:
-
-```json
-{
-  "step_0": {
-    "left_column": "sku",
-    "right_column": "sku",
-    "left_output_columns": ["name"],
-    "right_output_columns": ["category", "price"]
-  },
-  "step_1": {
-    "expression": "price * quantity",
-    "output_column": "revenue"
-  },
-  "step_2": {
-    "condition": "revenue < 100",
-    "output_column": "low_revenue_flag"
-  },
-  "step_3": {
-    "mapping": {
-      "revenue": "Total Revenue",
-      "low_revenue_flag": "Low Revenue Alert"
-    }
-  }
-}
-```
-
-- Every step uses a `step_N` key — including `step_0`
-- Zero placeholders — all real business values
-
----
-
-## Quick Reference: What Each Agent Writes
-
-| Agent | Output Files | Location |
-|-------|-------------|----------|
-| Business Analyst | `pipeline_graph.yaml` | `pipelines/<name>/workflow/` |
-| Separator | `logical_graph.yaml`, `business_mapping.json`, `atomic_operations.yaml` | `pipelines/<name>/workflow/` |
-| Atom Smith | `match_results.yaml` + optional atom/test files | `pipelines/<name>/workflow/` + `atoms/` + `tests/` |
-| Assembler | `manifest.yaml`, `config.json` | `pipelines/<name>/` |
+Older revisions of this file told an “Orchestrator agent” to spawn subagents as the brain.  
+That path is **deprecated**. Use `etlai create` / `Orchestrator` APIs above.

@@ -10,10 +10,10 @@ Do **not** implement multi-backend (#5) or Aider step files (#6) before the Code
 DONE:  #1–#4 runtime fixes
 DONE:  #7 BA mediation (Orchestrator owns user channel)
 DONE:  #8 Layer detangle (phase vs role vs control docs)
+DONE:  #11 Code-first control plane     ← state machine in Python
 
-NEXT:  #11 Code-first control plane     ← state machine in Python, not LLM/markdown
- THEN: #10 Task-card router             ← one TaskPacket / one playbook per invoke
- WITH: #9  Atom Smith firewall          ← parallel with #11/#10; before sensitive create
+NEXT:  #10 Task-card router             ← one TaskPacket / one playbook per invoke
+ WITH: #9  Atom Smith firewall          ← parallel with #10; before sensitive create
  THEN: #5  Multi-backend AI layer       ← workers on packets (LocalLLM/Cloud); CP stays Code
  THEN: #6  Aider / tool-agnostic UX     ← NEXT_STEP.md generated from TaskSpec
 ```
@@ -306,7 +306,7 @@ Orchestrator owns the user channel for phases 0–1. BA is a worker that drafts 
 
 **Status:** Design only; not implemented.
 
-**Depends on:** Item **#11** (Code-first control plane). Packets are built and advanced by Python — not by `ORCHESTRATION.md` or an LLM orchestrator agent.
+**Depends on:** Item **#11** (Code-first control plane) — **done**. Packets are built and advanced by Python.
 
 **Problem:** Layers are detangled in docs (#8) and BA mediation exists (#7), but runtime still thinks in **role bundles** (BA = phases 0–1, Separator = 2–3, …). `build_ba_turn_prompt()` still attaches *both* phase 0 and 1 playbooks. Small local models and item #5 backends need **one invoke = one task card**, with roles optional packaging—not the unit of work.
 
@@ -381,71 +381,22 @@ TaskPacket:
 
 ---
 
-## 11. Code-first control plane (not an LLM orchestrator)
+## 11. ~~Code-first control plane (not an LLM orchestrator)~~ RESOLVED
 
-**Status:** Design complete; not implemented (docs/sequence locked here).
+**Fixed in:** `etlai/orchestrator.py` (`start_control_session`, `advance` / `retry` / `submit_worker`, `worker_briefing`, `advance_after_gate`), `etlai/cli.py` (`etlai create --resume --advance`), demoted `ORCHESTRATION.md` + `ORCHESTRATOR_SYSTEM_PROMPT.md`.
 
-**Problem:** Today’s wording treats `ORCHESTRATION.md` + `ORCHESTRATOR_SYSTEM_PROMPT.md` + `etlai/orchestrator.py` as co-equal “control plane.” That fits a strong Claude Code driver, but **fails if orchestration also runs on small local models**. Prose agents are bad at phase advance, retries, confirmation ownership, and exact packet assembly.
+**Rule:** Control plane = deterministic Python. LLMs run worker task cards only. `workflow/control_session.json` owns `current_task_id`.
 
-**Target rule:** Control plane = **deterministic Python (`CodeBackend`)**. LLMs execute **worker** task cards only. “Local LLM orchestration” ≠ “local LLM decides the state machine.”
+| CP | Status |
+|----|--------|
+| CP0 Non-goal LLM phase picker | Documented |
+| CP1 LAYERS.md Code-primary | Done |
+| CP2 `etlai create` owns loop | Done |
+| CP3 State machine API + `control_session.json` | Done |
+| CP4 Demote ORCHESTRATION.md | Done |
+| CP5 Demote ORCHESTRATOR_SYSTEM_PROMPT | Done |
+| CP6 Tests advance/retry/confirm | Done |
 
-```text
-User ↔ Code control plane ↔ TaskPacket → worker backend → artifacts → gate (Code)
-                │                              ↑
-                └──── next / retry task_id ────┘
-```
-
-| Concern | Owner | Why |
-|---------|--------|-----|
-| Next `task_id`, loops, max retries | **Code** (`orchestrator.py` → `TaskRouter`) | Small LLMs fail at state machines |
-| Build packet (one playbook + paths + inputs) | **Code** `build_task_packet` (#10) | Exactness; no sibling-phase drift |
-| User channel / `confirm_graph` | **Code** (+ CLI/UI) | Contract, not model judgment |
-| Gates / firewall | **Code** | Already deterministic |
-| Slot fill / separation / atom write | **LocalLLM or Cloud** worker on one packet | Narrow constrained I/O |
-| `ORCHESTRATION.md` / orchestrator system prompt | **Transitional shim only** | Calls Python APIs until `etlai create` owns the loop |
-
-### Hierarchy
-
-1. **Source of truth:** `etlai/orchestrator.py` (+ `TaskSpec` / `TaskRouter` from #10/#11)
-2. **Worker payloads:** phase cards + templates + allowlists
-3. **Transitional drivers:** `ORCHESTRATION.md` / Claude prompts — must *call* APIs, not *be* the state machine
-
-`build_ba_turn_prompt()` is the right *shape* (code builds the packet) but incomplete until #10 (one phase only; generalize beyond BA).
-
-### Work breakdown
-
-| # | Task | Notes |
-|---|------|--------|
-| CP0 | **Non-goal:** LLM agent that freely chooses next phase / sets `owner_confirmed` | Optional later: tiny helper that picks among a **fixed** enum of next-actions, always validated by Code |
-| CP1 | ~~Update `LAYERS.md`: control plane = Python; markdown = shim~~ | Done with this tech-debt lock-in |
-| CP2 | `etlai create` owns the full phase loop in process | Print/relay user Q&A; call `confirm_graph`, `run_gate`, firewall; do not wait for a prose orchestrator |
-| CP3 | State machine API: `current_task_id` / `advance()` / `retry()` | Persisted under `workflow/` (extend `ba_session.json` → `control_session.json`) |
-| CP4 | Demote `ORCHESTRATION.md` to “how to call the CLI/APIs” | No longer the runtime brain; split/tool-agnostic under #6 later |
-| CP5 | Demote `ORCHESTRATOR_SYSTEM_PROMPT.md` | Document Code ownership; Claude shim only if needed |
-| CP6 | Tests: advance/retry/confirm cannot be skipped by worker artifacts alone | Mirror #7 `prepare_gate1` pattern for later phases |
-
-### Interaction with other items
-
-| Item | Relationship |
-|------|----------------|
-| #7 (done) | Mediation APIs stay; become methods on the Code loop |
-| #8 (done) | Layers stay; control-plane *location* corrected to Code |
-| #10 | Implements `TaskPacket` on top of this state machine |
-| #9 | Firewall activate/deactivate called from Code loop around phase_4/5 |
-| #5 | Worker backends only; control plane row stays `CodeBackend` |
-| #6 | `NEXT_STEP.md` / Aider are UIs over the same Code state machine |
-
-### Dependency order (canonical)
-
-```text
-#7 #8 (done)
-  → #11 Code-first control plane
-  → #10 Task-card router (TaskSpec + build_task_packet)
-  → #9  firewall (parallel OK with #11/#10)
-  → #5  multi-backend workers
-  → #6  Aider / tool-agnostic step UX
-```
-
-**When:** Next — before #10 implementation and before any #5 local-model serving work.
+**Next:** item #10 (`TaskPacket` / one playbook per invoke).
 
 ---

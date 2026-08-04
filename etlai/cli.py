@@ -315,7 +315,12 @@ def _generate_pipeline_readme(manifest: dict, inputs_def: list[dict], data_root:
 
 
 def cmd_create(args):
-    from etlai.orchestrator import Orchestrator, sanitize_pipeline_name
+    """Code control plane owns the create loop (TECH_DEBT #11)."""
+    from etlai.orchestrator import (
+        WORKER_TASKS,
+        Orchestrator,
+        sanitize_pipeline_name,
+    )
 
     project_root = Path(os.getcwd())
     config_path = project_root / "etlai.yaml"
@@ -327,170 +332,142 @@ def cmd_create(args):
     pipeline_name = args.name or sanitize_pipeline_name(user_request)
 
     orch = Orchestrator(project_root=project_root, pipeline_name=pipeline_name)
-    workflow_dir = orch.initialize()
-    orch.start_ba_session(user_request)
+    orch.initialize()
+
+    resume = getattr(args, "resume", False)
+    if resume and orch.control_session_path.is_file():
+        print(f"Resuming control session at task: {orch.current_task_id}")
+    else:
+        orch.start_control_session(user_request)
 
     print(f"Pipeline: {pipeline_name}")
-    print(f"Workflow dir: {workflow_dir}")
+    print(f"Workflow dir: {orch.workflow_dir}")
     print(f"Request: {user_request}")
+    print("Control plane: Code (etlai/orchestrator.py) — not an LLM orchestrator")
     print()
 
-    # Phase 0-1: Orchestrator mediates; BA is a worker (no direct user session)
-    print("=" * 60)
-    print("PHASE 0-1: Business Analyst (Orchestrator-mediated)")
-    print("=" * 60)
-    context = orch.build_agent_context("business_analyst")
-    print(f"  System prompt: {context['system_prompt']}")
-    print(f"  Draft graph:   {context['writable_paths'][0]}")
-    print(f"  Questions out: {context['writable_paths'][1]}")
-    print()
-    print("  User channel: YOU (Orchestrator / this CLI) talk to the user.")
-    print("  BA worker: proposes clarifying questions + drafts pipeline_graph.yaml")
-    print("  with owner_confirmed: false. Only Orchestrator.confirm_graph() may confirm.")
-    print()
-    print("  --- BA turn prompt (give this to the BA worker) ---")
-    print(orch.build_ba_turn_prompt())
-    print("  --- end BA turn prompt ---")
-    print()
+    interactive = sys.stdin.isatty() and not getattr(args, "no_confirm", False)
+    max_steps = 64
 
-    status = orch.get_ba_turn_status()
-    if status.questions:
-        print("  Pending clarifying questions for the user:")
-        for i, q in enumerate(status.questions, 1):
-            print(f"    {i}. {q}")
-        print("  Collect answers, then: orch.record_user_answers(...); next BA turn.")
-        print()
+    for _ in range(max_steps):
+        status = orch.control_status()
+        task_id = status["current_task_id"]
 
-    if status.graph is not None and not status.confirmed_by_orchestrator:
-        print("  Draft graph present. Present it to the user, then confirm:")
-        if sys.stdin.isatty() and not getattr(args, "no_confirm", False):
-            reply = input("  Is this business process graph complete and correct? [y/N]: ").strip()
-            yes = reply.lower() in ("y", "yes")
-            if orch.confirm_graph(yes):
-                print("  Confirmed via Orchestrator.confirm_graph().")
-            else:
-                print("  Not confirmed. Relay feedback to BA and re-run.")
+        if status["is_done"]:
+            print("=" * 60)
+            print(f"SUCCESS: Pipeline '{pipeline_name}' created!")
+            print("=" * 60)
+            print()
+            print("Next steps:")
+            print("  1. Run: etlai sync")
+            print(f"  2. Drop files into pipelines/{pipeline_name}/inbox/")
+            print("  3. Run: etlai run")
+            return
+
+        print("=" * 60)
+        print(f"TASK: {task_id}  (retry {status['retry_count']}/{status['max_retries']})")
+        print("=" * 60)
+
+        # --- confirm (user channel owned by Code) ---
+        if status["is_confirm"]:
+            ba = orch.get_ba_turn_status()
+            if ba.questions:
+                print("  Pending clarifying questions (relay to user, then record_user_answers):")
+                for i, q in enumerate(ba.questions, 1):
+                    print(f"    {i}. {q}")
+            if ba.graph is None:
+                print("  No draft graph yet. Run BA worker turns (phase_0/phase_1) first.")
+                print(f"  Resume with: etlai create --resume --name {pipeline_name} \"{user_request}\"")
                 sys.exit(1)
-        else:
-            print("  (Non-interactive) Call Orchestrator.confirm_graph(True) after user assent.")
-            print("  Or re-run with a TTY to confirm interactively.")
-            ready, reason = orch.prepare_gate1()
-            if not ready:
-                print(f"  BLOCKED before gate 1: {reason}")
-                sys.exit(1)
-    print()
 
-    ready, reason = orch.prepare_gate1()
-    if not ready:
-        print(f"  BLOCKED before gate 1: {reason}")
-        sys.exit(1)
-
-    # Gate 1 (with Orchestrator-owned retry prompt for BA — no user loop inside BA)
-    gate1 = orch.run_gate(1)
-    retries = 0
-    while not gate1 and retries < Orchestrator.MAX_RETRIES:
-        retries += 1
-        print(f"  GATE 1: FAIL (retry {retries}/{Orchestrator.MAX_RETRIES})")
-        print(gate1.error_summary())
-        print("  --- BA fix prompt (gate errors; still no user session) ---")
-        print(orch.build_ba_turn_prompt(gate_errors=gate1.errors))
-        print("  --- end BA fix prompt ---")
-        print("  Apply BA fixes to pipeline_graph.yaml, keep owner_confirmed via confirm_graph only.")
-        if sys.stdin.isatty() and not getattr(args, "no_confirm", False):
-            input("  Press Enter after BA has fixed the graph...")
-            # Re-confirm if strip happened; otherwise re-run gate
-            session_ok, _ = orch.prepare_gate1()
-            if not session_ok:
-                reply = input("  Re-confirm graph with user? [y/N]: ").strip()
+            print("  Draft graph present. Code will confirm only after explicit user yes.")
+            if interactive:
+                reply = input("  Is this business process graph complete and correct? [y/N]: ").strip()
                 if not orch.confirm_graph(reply.lower() in ("y", "yes")):
+                    print("  Not confirmed. Provide feedback to BA worker, then --resume.")
                     sys.exit(1)
-            gate1 = orch.run_gate(1)
-        else:
-            print("  Fix errors and re-run 'etlai create' after BA turn + confirm_graph.")
+                print("  confirm_graph(True) recorded.")
+                orch.advance()
+                continue
+
+            ok, reason = orch.can_advance()
+            if ok:
+                orch.advance()
+                continue
+            print(f"  BLOCKED: {reason}")
+            print("  Call Orchestrator.confirm_graph(True) after user assent, then --resume.")
             sys.exit(1)
 
-    if not gate1:
-        print("  GATE 1: FAIL after max retries — escalate to user.")
-        print(gate1.error_summary())
-        sys.exit(1)
-    print("  GATE 1: PASS")
-    print()
+        # --- gates (Code) ---
+        if status["is_gate"]:
+            result = orch.run_current_gate()
+            if result:
+                print(f"  {task_id.upper()}: PASS")
+                nxt = orch.advance_after_gate(result)
+                print(f"  Advanced → {nxt}")
+                continue
 
-    # Phase 2-3: Separator
-    print("=" * 60)
-    print("PHASE 2-3: Separator")
-    print("=" * 60)
-    context = orch.build_agent_context("separator")
-    print(f"  System prompt: {context['system_prompt']}")
-    print(f"  Input: pipeline_graph.yaml")
-    print(f"  Output: logical_graph.yaml, business_mapping.json, atomic_operations.yaml")
-    print()
-
-    # Gates 2+3
-    for gate_num in (2, 3):
-        result = orch.run_gate(gate_num)
-        if not result:
-            print(f"  GATE {gate_num}: FAIL")
+            print(f"  {task_id.upper()}: FAIL")
             print(result.error_summary())
+            nxt = orch.advance_after_gate(result)
+            if nxt is None:
+                print("  Max retries exceeded — escalate to user.")
+                sys.exit(1)
+
+            # Stay on same gate task after retry; offer worker fix briefing for gate_1
+            if task_id == "gate_1":
+                print("  --- worker fix briefing (BA) ---")
+                print(orch.build_ba_turn_prompt(gate_errors=result.errors))
+                print("  --- end briefing ---")
+            else:
+                # Map gate failure back to prior worker for briefing
+                prior_worker = {
+                    "gate_2": "phase_2",
+                    "gate_3": "phase_3",
+                    "gate_4": "phase_4",
+                    "gate_5": "phase_5",
+                    "gate_6": "phase_7",
+                }.get(task_id)
+                if prior_worker:
+                    print(f"  Fix artifacts for {prior_worker}, then --resume to re-run {task_id}.")
+            if interactive:
+                input("  Press Enter after worker fixes are applied...")
+                continue
+            print(f"  Resume with: etlai create --resume --name {pipeline_name} \"{user_request}\"")
             sys.exit(1)
-        print(f"  GATE {gate_num}: PASS")
-    print()
 
-    # Phase 4-5: Atom Smith (FIREWALL)
-    print("=" * 60)
-    print("PHASE 4-5: Atom Smith (FIREWALL ACTIVE)")
-    print("=" * 60)
-    firewall_activated = orch.activate_firewall()
-    if firewall_activated:
-        print("  FIREWALL: business_mapping.json hidden from Atom Smith")
-    context = orch.build_agent_context("atom_smith")
-    print(f"  System prompt: {context['system_prompt']}")
-    print(f"  Input: atomic_operations.yaml ONLY")
-    print(f"  Output: match_results.yaml + any new atoms")
-    print()
+        # --- worker tasks ---
+        if task_id in WORKER_TASKS:
+            print("  Code control plane — worker executes this briefing and stops.")
+            print("  --- worker briefing ---")
+            print(orch.worker_briefing())
+            print("  --- end briefing ---")
+            print()
 
-    # Gates 4+5
-    for gate_num in (4, 5):
-        result = orch.run_gate(gate_num)
-        if not result:
-            print(f"  GATE {gate_num}: FAIL")
-            print(result.error_summary())
-            orch.deactivate_firewall()
-            sys.exit(1)
-        print(f"  GATE {gate_num}: PASS")
+            should_submit = getattr(args, "advance", False)
+            if interactive and not should_submit:
+                reply = input("  Worker finished for this task? [y/N]: ").strip()
+                should_submit = reply.lower() in ("y", "yes")
 
-    orch.deactivate_firewall()
-    print("  FIREWALL: business_mapping.json restored")
-    print()
+            if should_submit:
+                orch.submit_worker()
+                ok, reason = orch.can_advance()
+                if ok:
+                    nxt = orch.advance()
+                    print(f"  Advanced → {nxt}")
+                    continue
+                print(f"  Cannot advance: {reason}")
+                sys.exit(1)
 
-    # Phase 6-7: Assembler
-    print("=" * 60)
-    print("PHASE 6-7: Assembler")
-    print("=" * 60)
-    context = orch.build_agent_context("assembler")
-    print(f"  System prompt: {context['system_prompt']}")
-    print(f"  Input: all four artifacts + business_mapping")
-    print(f"  Output: manifest.yaml + config.json")
-    print()
+            print("  Waiting for worker. When done:")
+            print(f"    etlai create --resume --advance --name {pipeline_name} \"{user_request}\"")
+            sys.exit(0)
 
-    # Gate 6
-    gate6 = orch.run_gate(6)
-    if not gate6:
-        print(f"  GATE 6: FAIL")
-        print(gate6.error_summary())
+        print(f"  ERROR: unhandled task_id {task_id!r}")
         sys.exit(1)
-    print(f"  GATE 6: PASS")
-    print()
 
-    # Success
-    print("=" * 60)
-    print(f"SUCCESS: Pipeline '{pipeline_name}' created!")
-    print("=" * 60)
-    print()
-    print("Next steps:")
-    print(f"  1. Run: etlai sync")
-    print(f"  2. Drop files into pipelines/{pipeline_name}/inbox/")
-    print(f"  3. Run: etlai run")
+    print("ERROR: control loop exceeded max steps")
+    sys.exit(1)
 
 
 def cmd_run(args):
@@ -546,13 +523,23 @@ def main():
     init_p.add_argument("directory", nargs="?", default=".", help="Target directory (default: current)")
     init_p.add_argument("--force", action="store_true", help="Overwrite existing files")
 
-    create_p = sub.add_parser("create", help="Create a pipeline using the 5-agent system")
+    create_p = sub.add_parser("create", help="Create a pipeline (Code control plane + worker tasks)")
     create_p.add_argument("request", help="Business request describing the pipeline to build")
     create_p.add_argument("--name", help="Pipeline name (auto-generated if omitted)")
     create_p.add_argument(
         "--no-confirm",
         action="store_true",
         help="Skip interactive graph confirmation (caller must use Orchestrator.confirm_graph)",
+    )
+    create_p.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume from workflow/control_session.json instead of resetting",
+    )
+    create_p.add_argument(
+        "--advance",
+        action="store_true",
+        help="After resume, mark current worker task submitted and advance if artifacts ready",
     )
 
     sub.add_parser("sync", help="Validate manifests and create missing folders")

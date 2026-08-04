@@ -13,6 +13,7 @@ All notable changes to ETLai are documented here.
 
 ### Added
 - `workflow/LAYERS.md` — layer contract for phase / role / control plane
+- Code control plane: `control_session.json`, `advance` / `retry` / `submit_worker`, `etlai create --resume --advance` (TECH_DEBT #11)
 - BA mediation APIs: `start_ba_session`, `build_ba_turn_prompt`, `record_ba_questions`, `record_user_answers`, `confirm_graph`, `prepare_gate1`
 
 ## [0.6.0] — 2026-08-03

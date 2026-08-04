@@ -1,7 +1,8 @@
-"""Orchestrator — coordinates the 5-agent pipeline creation flow.
+"""Orchestrator — Code control plane for pipeline creation (TECH_DEBT #11).
 
-This module provides the routing logic, gate validation, firewall enforcement,
-BA user-channel mediation, and retry mechanism for the multi-agent system.
+Deterministic Python owns phase advance, confirmation, gates, firewall, and
+packet assembly. LLMs execute worker task cards only — they do not choose the
+next task_id.
 
 Usage from CLI:
     etlai create "Build me a pipeline that..."
@@ -9,11 +10,8 @@ Usage from CLI:
 Usage from Python:
     from etlai.orchestrator import Orchestrator
     orch = Orchestrator(project_root=Path("."), pipeline_name="my_pipeline")
-    orch.initialize()
-    orch.start_ba_session(user_request="Build me a pipeline that...")
-    prompt = orch.build_ba_turn_prompt()
-    # ... invoke BA worker with prompt; BA writes draft graph + questions ...
-    orch.confirm_graph(user_said_yes=True)  # only Orchestrator may confirm
+    orch.start_control_session(user_request="Build me a pipeline that...")
+    # Code loop: briefing → worker/gate → advance() / retry()
 """
 
 import json
@@ -25,7 +23,59 @@ import yaml
 
 BA_SESSION_FILE = "ba_session.json"
 BA_QUESTIONS_FILE = "ba_questions.json"
+CONTROL_SESSION_FILE = "control_session.json"
 MAX_BA_ROUNDS = 5
+
+# Code control-plane task graph (TECH_DEBT #11). LLMs never choose the next id.
+CONTROL_TASK_SEQUENCE = [
+    "phase_0",
+    "phase_1",
+    "confirm",
+    "gate_1",
+    "phase_2",
+    "phase_3",
+    "gate_2",
+    "gate_3",
+    "phase_4",
+    "phase_5",
+    "gate_4",
+    "gate_5",
+    "phase_6",
+    "phase_7",
+    "gate_6",
+    "done",
+]
+
+GATE_TASK_NUMBERS = {
+    "gate_1": 1,
+    "gate_2": 2,
+    "gate_3": 3,
+    "gate_4": 4,
+    "gate_5": 5,
+    "gate_6": 6,
+}
+
+WORKER_TASKS = {
+    "phase_0",
+    "phase_1",
+    "phase_2",
+    "phase_3",
+    "phase_4",
+    "phase_5",
+    "phase_6",
+    "phase_7",
+}
+
+ROLE_FOR_TASK = {
+    "phase_0": "business_analyst",
+    "phase_1": "business_analyst",
+    "phase_2": "separator",
+    "phase_3": "separator",
+    "phase_4": "atom_smith",
+    "phase_5": "atom_smith",
+    "phase_6": "assembler",
+    "phase_7": "assembler",
+}
 
 
 class GateResult:
@@ -69,19 +119,16 @@ class BATurnResult:
 
 
 class Orchestrator:
-    """Coordinates the 5-agent pipeline creation flow.
+    """Code control plane for pipeline creation.
 
     Responsibilities:
-    1. Create workflow directory structure
-    2. Own the user channel for phases 0-1 (relay BA questions; collect answers)
-    3. Alone set owner_confirmed after explicit user assent
-    4. Run gate validators between phases
-    5. Enforce firewall (hide business_mapping.json from Atom Smith)
-    6. Manage retry logic (max 3 attempts per gate)
-    7. Report status
+    1. Persist and advance control_session.json (task_id / retries)
+    2. Own the user channel for phases 0-1 (relay questions; confirm_graph)
+    3. Run gate validators; enforce firewall around Atom Smith phases
+    4. Emit worker briefings (packets) — never invent domain answers
 
-    Agent spawning is done by the caller (e.g. a coding-assistant session).
-    This class provides the infrastructure those agents need.
+    Worker LLMs are invoked by the caller with briefings from this class.
+    They must not choose the next task_id.
     """
 
     MAX_RETRIES = 3
@@ -114,6 +161,251 @@ class Orchestrator:
         self.pipeline_dir.mkdir(parents=True, exist_ok=True)
         self.workflow_dir.mkdir(parents=True, exist_ok=True)
         return self.workflow_dir
+
+    # ------------------------------------------------------------------
+    # Code control plane state machine (TECH_DEBT #11)
+    # ------------------------------------------------------------------
+
+    @property
+    def control_session_path(self) -> Path:
+        return self.workflow_dir / CONTROL_SESSION_FILE
+
+    def start_control_session(self, user_request: str) -> dict:
+        """Start or reset the Code-owned creation loop. Also starts BA mediation."""
+        self.initialize()
+        self.start_ba_session(user_request)
+        session = {
+            "user_request": user_request,
+            "current_task_id": CONTROL_TASK_SEQUENCE[0],
+            "retry_count": 0,
+            "max_retries": self.MAX_RETRIES,
+            "worker_submitted_for": None,
+            "history": [],
+        }
+        self._write_control_session(session)
+        return session
+
+    def _default_control_session(self) -> dict:
+        return {
+            "user_request": "",
+            "current_task_id": CONTROL_TASK_SEQUENCE[0],
+            "retry_count": 0,
+            "max_retries": self.MAX_RETRIES,
+            "worker_submitted_for": None,
+            "history": [],
+        }
+
+    def _read_control_session(self) -> dict:
+        if not self.control_session_path.is_file():
+            return self._default_control_session()
+        with open(self.control_session_path) as f:
+            data = json.load(f)
+        base = self._default_control_session()
+        base.update(data)
+        return base
+
+    def _write_control_session(self, session: dict) -> None:
+        self.workflow_dir.mkdir(parents=True, exist_ok=True)
+        with open(self.control_session_path, "w") as f:
+            json.dump(session, f, indent=2)
+            f.write("\n")
+
+    def _append_history(self, session: dict, event: str, detail: str = "") -> None:
+        history = list(session.get("history") or [])
+        history.append({
+            "task_id": session.get("current_task_id"),
+            "event": event,
+            "detail": detail,
+        })
+        session["history"] = history
+
+    @property
+    def current_task_id(self) -> str:
+        return self._read_control_session().get("current_task_id", CONTROL_TASK_SEQUENCE[0])
+
+    def control_status(self) -> dict:
+        """Snapshot of Code control-plane state for CLI / drivers."""
+        session = self._read_control_session()
+        task_id = session.get("current_task_id", CONTROL_TASK_SEQUENCE[0])
+        return {
+            "user_request": session.get("user_request", ""),
+            "current_task_id": task_id,
+            "retry_count": int(session.get("retry_count", 0)),
+            "max_retries": int(session.get("max_retries", self.MAX_RETRIES)),
+            "is_worker": task_id in WORKER_TASKS,
+            "is_gate": task_id in GATE_TASK_NUMBERS,
+            "is_confirm": task_id == "confirm",
+            "is_done": task_id == "done",
+            "role": ROLE_FOR_TASK.get(task_id),
+            "can_advance": self.can_advance()[0],
+            "advance_block_reason": self.can_advance()[1],
+        }
+
+    def can_advance(self) -> tuple[bool, str]:
+        """Whether Code may move past the current task_id."""
+        task_id = self.current_task_id
+        if task_id == "done":
+            return False, "already done"
+
+        if task_id == "confirm":
+            ba = self._read_ba_session()
+            graph = self.read_artifact("pipeline_graph") or {}
+            if ba.get("confirmed_by_orchestrator") and graph.get("owner_confirmed"):
+                return True, "ok"
+            return False, "call confirm_graph(True) after explicit user assent"
+
+        if task_id in GATE_TASK_NUMBERS:
+            return False, "use advance_after_gate(result) after run_current_gate()"
+
+        # Worker tasks: require explicit submit_worker() + expected artifacts
+        checks = {
+            "phase_0": self._artifact_exists("pipeline_graph"),
+            "phase_1": self._artifact_exists("pipeline_graph"),
+            "phase_2": self._artifact_exists("logical_graph") and self._artifact_exists("business_mapping"),
+            "phase_3": self._artifact_exists("atomic_operations"),
+            "phase_4": self._artifact_exists("match_results"),
+            "phase_5": self._artifact_exists("match_results"),
+            "phase_6": self._artifact_exists("manifest") and self._artifact_exists("config"),
+            "phase_7": self._artifact_exists("manifest") and self._artifact_exists("config"),
+        }
+        if task_id in WORKER_TASKS:
+            session = self._read_control_session()
+            if session.get("worker_submitted_for") != task_id:
+                return False, "call submit_worker() after the worker finishes this task"
+            if task_id in checks and not checks[task_id]:
+                return False, f"worker artifacts for {task_id} not ready"
+            return True, "ok"
+        return False, f"unknown task_id: {task_id}"
+
+    def submit_worker(self) -> None:
+        """Declare that the worker finished the current task (artifacts should exist)."""
+        session = self._read_control_session()
+        task_id = session.get("current_task_id")
+        if task_id not in WORKER_TASKS:
+            raise RuntimeError(f"submit_worker only valid on worker tasks, got {task_id!r}")
+        session["worker_submitted_for"] = task_id
+        self._append_history(session, "submit_worker", task_id)
+        self._write_control_session(session)
+
+    def _artifact_exists(self, name: str) -> bool:
+        return self.read_artifact(name) is not None
+
+    def advance(self, *, from_gate_pass: bool = False) -> str:
+        """Move to the next task_id after preconditions pass. Returns new task_id."""
+        if not from_gate_pass:
+            ok, reason = self.can_advance()
+            if not ok:
+                raise RuntimeError(f"Cannot advance from {self.current_task_id}: {reason}")
+
+        session = self._read_control_session()
+        current = session["current_task_id"]
+        if current not in CONTROL_TASK_SEQUENCE:
+            raise RuntimeError(f"Unknown task_id in session: {current!r}")
+        idx = CONTROL_TASK_SEQUENCE.index(current)
+        if idx >= len(CONTROL_TASK_SEQUENCE) - 1:
+            raise RuntimeError("Already at end of control sequence")
+
+        nxt = CONTROL_TASK_SEQUENCE[idx + 1]
+        self._append_history(session, "advance", f"→ {nxt}")
+        session["current_task_id"] = nxt
+        session["retry_count"] = 0
+        session["worker_submitted_for"] = None
+        self._write_control_session(session)
+
+        # Firewall side effects owned by Code
+        if nxt == "phase_4":
+            self.activate_firewall()
+        if current == "gate_5" and nxt == "phase_6":
+            self.deactivate_firewall()
+
+        return nxt
+
+    def retry(self) -> tuple[bool, int]:
+        """Record a failed attempt on the current task. False if max retries exceeded."""
+        session = self._read_control_session()
+        count = int(session.get("retry_count", 0)) + 1
+        max_retries = int(session.get("max_retries", self.MAX_RETRIES))
+        session["retry_count"] = count
+        self._append_history(session, "retry", f"attempt {count}/{max_retries}")
+        self._write_control_session(session)
+        return count <= max_retries, count
+
+    def run_current_gate(self) -> GateResult:
+        """Run the gate validator for the current gate_* task."""
+        task_id = self.current_task_id
+        if task_id not in GATE_TASK_NUMBERS:
+            raise RuntimeError(f"current_task_id {task_id!r} is not a gate task")
+        if task_id == "gate_1":
+            ready, reason = self.prepare_gate1()
+            if not ready:
+                return GateResult(
+                    gate_num=1,
+                    passed=False,
+                    errors=[reason],
+                    raw_output=reason,
+                )
+        return self.run_gate(GATE_TASK_NUMBERS[task_id])
+
+    def advance_after_gate(self, result: GateResult) -> str | None:
+        """Advance on gate pass; retry on fail. Returns new task_id, or None if retries exhausted."""
+        if self.current_task_id not in GATE_TASK_NUMBERS:
+            raise RuntimeError("advance_after_gate only valid on gate_* tasks")
+        if result:
+            return self.advance(from_gate_pass=True)
+        ok, count = self.retry()
+        if not ok:
+            session = self._read_control_session()
+            self._append_history(session, "fail", f"max retries ({count})")
+            self._write_control_session(session)
+            if self.current_task_id in ("gate_4", "gate_5") or self._firewall_active:
+                self.deactivate_firewall()
+            return None
+        return self.current_task_id
+
+    def worker_briefing(self, user_feedback: str | None = None, gate_errors: list[str] | None = None) -> str:
+        """Emit instructions for the current worker task (Code-assembled packet)."""
+        task_id = self.current_task_id
+        if task_id not in WORKER_TASKS:
+            raise RuntimeError(f"No worker briefing for task {task_id!r}")
+
+        if task_id in ("phase_0", "phase_1"):
+            return self.build_ba_turn_prompt(
+                user_feedback=user_feedback,
+                gate_errors=gate_errors,
+            )
+
+        role = ROLE_FOR_TASK[task_id]
+        ctx = self.build_agent_context(role)
+        scaffold = self._find_scaffold_workflow_dir()
+        phase_file = {
+            "phase_2": "phase_2_separation.md",
+            "phase_3": "phase_3_atomize.md",
+            "phase_4": "phase_4_match.md",
+            "phase_5": "phase_5_create.md",
+            "phase_6": "phase_6_assemble.md",
+            "phase_7": "phase_7_rehydrate.md",
+        }[task_id]
+
+        lines = [
+            f"You are executing worker task {task_id} (Code control plane).",
+            "Follow ONLY the assigned phase playbook. Do not talk to the user.",
+            "Do not choose the next phase — write artifacts and stop.",
+            "",
+            f"Role policy: {ctx['system_prompt']}",
+            f"Phase playbook: {scaffold / phase_file}",
+            f"Layers: {scaffold / 'LAYERS.md'}",
+            "",
+            "Readable:",
+            *[f"  - {p}" for p in ctx["readable_files"]],
+            "Writable:",
+            *[f"  - {p}" for p in ctx["writable_paths"]],
+        ]
+        if gate_errors:
+            lines.append("")
+            lines.append("Gate reported these errors — fix artifacts then stop:")
+            for err in gate_errors:
+                lines.append(f"  - {err}")
+        return "\n".join(lines)
 
     # ------------------------------------------------------------------
     # BA mediation (Orchestrator owns the user channel for phases 0-1)

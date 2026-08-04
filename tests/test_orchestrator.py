@@ -6,7 +6,12 @@ from pathlib import Path
 import pytest
 import yaml
 
-from etlai.orchestrator import GateResult, Orchestrator, sanitize_pipeline_name
+from etlai.orchestrator import (
+    CONTROL_TASK_SEQUENCE,
+    GateResult,
+    Orchestrator,
+    sanitize_pipeline_name,
+)
 
 
 @pytest.fixture
@@ -324,7 +329,7 @@ class TestBAMediation:
         assert "Role Policy" in ba or "Access" in ba
         assert "owner_confirmed: true" in ba
         assert "confirm_graph" in orch_prompt
-        assert "one phase" in orch_prompt.lower() or "exactly one phase" in orch_prompt.lower()
+        assert "not the control plane" in orch_prompt.lower()
         assert "phases = *what*" in layers
 
         for text, label in ((phase0, "phase_0"), (phase1, "phase_1")):
@@ -333,7 +338,107 @@ class TestBAMediation:
             assert "you have no user session" not in text.lower()
 
 
-class TestSanitizePipelineName:
+class TestControlPlane:
+    """TECH_DEBT #11 — Code owns task_id advance/retry/confirm."""
+
+    def test_start_control_session(self, orch):
+        orch.start_control_session("join sales with catalog")
+        assert orch.control_session_path.is_file()
+        assert orch.current_task_id == "phase_0"
+        assert orch.ba_session_path.is_file()
+
+    def test_cannot_advance_worker_without_submit(self, orch):
+        orch.start_control_session("x")
+        graph = {"owner_confirmed": False, "name": "t"}
+        (orch.workflow_dir / "pipeline_graph.yaml").write_text(yaml.safe_dump(graph))
+        ok, reason = orch.can_advance()
+        assert ok is False
+        assert "submit_worker" in reason
+
+    def test_submit_and_advance_worker(self, orch):
+        orch.start_control_session("x")
+        (orch.workflow_dir / "pipeline_graph.yaml").write_text(
+            yaml.safe_dump({"owner_confirmed": False, "name": "t"})
+        )
+        orch.submit_worker()
+        assert orch.advance() == "phase_1"
+        assert orch.current_task_id == "phase_1"
+        # must submit again for phase_1 even though graph exists
+        ok, _ = orch.can_advance()
+        assert ok is False
+
+    def test_confirm_required_before_gate1(self, orch):
+        orch.start_control_session("x")
+        # jump session to confirm for unit test
+        session = orch._read_control_session()
+        session["current_task_id"] = "confirm"
+        orch._write_control_session(session)
+        (orch.workflow_dir / "pipeline_graph.yaml").write_text(
+            yaml.safe_dump({"owner_confirmed": False, "name": "t"})
+        )
+        ok, reason = orch.can_advance()
+        assert ok is False
+        assert "confirm_graph" in reason
+
+        orch.confirm_graph(True)
+        assert orch.can_advance()[0] is True
+        assert orch.advance() == "gate_1"
+
+    def test_worker_cannot_self_confirm_past_prepare_gate1(self, orch):
+        orch.start_control_session("x")
+        (orch.workflow_dir / "pipeline_graph.yaml").write_text(
+            yaml.safe_dump({"owner_confirmed": True, "name": "t"})
+        )
+        ready, reason = orch.prepare_gate1()
+        assert ready is False
+        assert "confirm_graph" in reason
+        graph = yaml.safe_load((orch.workflow_dir / "pipeline_graph.yaml").read_text())
+        assert graph["owner_confirmed"] is False
+
+    def test_gate_retry_then_exhausted(self, orch):
+        orch.start_control_session("x")
+        session = orch._read_control_session()
+        session["current_task_id"] = "gate_2"
+        session["max_retries"] = 2
+        orch._write_control_session(session)
+
+        fail = GateResult(2, False, ["leak"], "FAIL")
+        assert orch.advance_after_gate(fail) == "gate_2"
+        assert orch._read_control_session()["retry_count"] == 1
+        assert orch.advance_after_gate(fail) == "gate_2"
+        assert orch.advance_after_gate(fail) is None  # exceeds max
+
+    def test_advance_after_gate_pass(self, orch):
+        orch.start_control_session("x")
+        session = orch._read_control_session()
+        session["current_task_id"] = "gate_1"
+        orch._write_control_session(session)
+        pass_result = GateResult(1, True, [], "PASS")
+        nxt = orch.advance_after_gate(pass_result)
+        assert nxt == "phase_2"
+
+    def test_worker_briefing_phase_2(self, orch):
+        orch.start_control_session("x")
+        session = orch._read_control_session()
+        session["current_task_id"] = "phase_2"
+        orch._write_control_session(session)
+        text = orch.worker_briefing()
+        assert "phase_2" in text
+        assert "phase_2_separation.md" in text
+        assert "Do not choose the next phase" in text
+
+    def test_sequence_covers_done(self):
+        assert CONTROL_TASK_SEQUENCE[0] == "phase_0"
+        assert CONTROL_TASK_SEQUENCE[-1] == "done"
+        assert "confirm" in CONTROL_TASK_SEQUENCE
+
+    def test_prompt_contracts_control_plane_docs(self, orch):
+        agents = orch._find_agents_dir()
+        orch_prompt = (agents / "ORCHESTRATOR_SYSTEM_PROMPT.md").read_text()
+        assert "not the control plane" in orch_prompt.lower() or "You are not the control plane" in orch_prompt
+        orch_md = (orch._find_scaffold_workflow_dir().parent / "ORCHESTRATION.md").read_text()
+        assert "control plane is Python" in orch_md.lower() or "Code control plane" in orch_md
+
     def test_basic_request(self):
         name = sanitize_pipeline_name("Build me a sales reconciliation pipeline")
         assert "sales" in name
