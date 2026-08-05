@@ -26,6 +26,7 @@ Guidance for coding agents working in this repository.
 - [Agent Build Roadmap](docs/AGENT_BUILD_ROADMAP.md) — 6-step implementation plan
 - [Agent Implementation Plan](docs/AGENT_IMPLEMENTATION_PLAN.md) — Detailed agent contracts
 - [Phase Dependency Graph](docs/PHASE_DEPENDENCY_GRAPH.md) — Phase I/O and dependencies
+- [Foolproof Requirements Capture](docs/FOOLPROOF_REQUIREMENTS_CAPTURE.md) — Jargon-safe BA steps, SLM vs Code, cloud need
 
 ### Scaffold contracts
 

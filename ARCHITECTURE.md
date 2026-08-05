@@ -14,7 +14,7 @@ ETLai is a pip-installable package that provides a local, folder-driven CSV tran
 │                                                                      │
 │  etlai/                                                             │
 │  ├── cli.py              CLI (init/create/sync/run/list)            │
-│  ├── orchestrator.py     5-agent coordination (gates, firewall)     │
+│  ├── orchestrator.py     Code control plane (gates, firewall, tasks) │
 │  ├── registry.py         Manifest scanner → Dagster Definitions      │
 │  ├── atoms/              10 shipped generic atoms                    │
 │  ├── helpers/            Framework utilities                         │
@@ -25,9 +25,10 @@ ETLai is a pip-installable package that provides a local, folder-driven CSV tran
 │  ├── sensors/            Hot folder sensor factory                    │
 │  └── scaffold/           Templates for etlai init                    │
 │      ├── CLAUDE.md       Constitution for LLM sessions               │
-│      ├── ORCHESTRATION.md  Step-by-step agent coordination script   │
+│      ├── ORCHESTRATION.md  Transitional shim → call Python APIs     │
 │      ├── HOW_TO_USE_AGENTS.md  End-user guide                       │
 │      ├── workflow/       Phase playbooks + gate validators            │
+│      │   ├── LAYERS.md   Phase / role / Code control-plane contract │
 │      │   ├── phase_0..7  Detailed instructions per phase             │
 │      │   ├── templates/  YAML schemas for artifacts                  │
 │      │   └── validators/ 6 deterministic gate scripts                │
@@ -38,7 +39,7 @@ ETLai is a pip-installable package that provides a local, folder-driven CSV tran
 │ User project (scaffolded by `etlai init`)                           │
 │                                                                      │
 │  CLAUDE.md               LLM session constitution                    │
-│  ORCHESTRATION.md        Agent coordination script                   │
+│  ORCHESTRATION.md        Shim only — Code owns the create loop       │
 │  etlai.yaml              Project config (pipelines_root)             │
 │  definitions.py          3-line Dagster loader                       │
 │  workflow/               Gate validators + phase playbooks            │
@@ -235,7 +236,7 @@ business_mapping.json ──► Separator produces it
 
 | Agent | Phases | Loops with User? | Knows Domain? | Knows Atoms? |
 |-------|--------|------------------|---------------|-------------|
-| Orchestrator | All | YES (relay Q&A + confirmation only) | No | No |
+| Orchestrator (**Code**, not an LLM agent) | All | YES (relay Q&A + confirmation only) | No | No |
 | Business Analyst | 0-1 | No (worker turns; Orchestrator mediates) | YES | No |
 | Separator | 2-3 | No | No | No |
 | Atom Smith | 4-5 | No | No | YES |
@@ -243,7 +244,7 @@ business_mapping.json ──► Separator produces it
 
 **Confirmation ownership:** Only `Orchestrator.confirm_graph(True)` may set `owner_confirmed: true` on `pipeline_graph.yaml` after explicit user assent. BA always writes `owner_confirmed: false`.
 
-**Layer separation:** Phase playbooks (`workflow/phase_N_*.md`) are task contracts only. Role prompts are thin access policies. **Control plane is Code** (`etlai/orchestrator.py` / future TaskRouter) — not `ORCHESTRATION.md` or an LLM orchestrator (see `workflow/LAYERS.md`, TECH_DEBT #11). Required for small-model / multi-backend execution.
+**Layer separation:** Phase playbooks (`workflow/phase_N_*.md`) are task contracts only. Role prompts are thin access policies. **Control plane is Code** (`etlai/orchestrator.py` / future `TaskRouter`) — not `ORCHESTRATION.md` or an LLM orchestrator (see `workflow/LAYERS.md`, TECH_DEBT #11 done, #10 packets). User interaction + phase routing stay on `CodeBackend`; LocalLLM/Cloud run **workers on one task card** only (TECH_DEBT #5 / #10 B0). Required for small-model / multi-backend execution.
 
 ### Gate Validators
 
@@ -260,19 +261,21 @@ Deterministic scripts that validate artifacts between phases:
 
 ### Orchestrator Module (etlai/orchestrator.py)
 
+**Code control plane** — deterministic Python state machine. Not an LLM “orchestrator agent.” See TECH_DEBT #11 / #10 and `workflow/LAYERS.md`.
+
 ```python
 from etlai.orchestrator import Orchestrator
 
 orch = Orchestrator(project_root=Path("."), pipeline_name="sales_recon")
 orch.initialize()
-orch.start_ba_session("join sales with catalog")
-orch.build_ba_turn_prompt()          # BA worker turn instructions
+orch.start_control_session("join sales with catalog")
+orch.worker_briefing()               # current task_id packet / prompt
 orch.confirm_graph(True)             # only Orchestrator may confirm
-orch.prepare_gate1()                 # enforce confirmation ownership
 orch.run_gate(1)                     # validate, returns GateResult
 orch.activate_firewall()             # hide business_mapping.json
 orch.build_agent_context("atom_smith")  # scoped file list
 orch.deactivate_firewall()           # restore
+orch.advance()                       # next task_id after gate pass
 orch.get_phase_status()              # which artifacts exist
 ```
 

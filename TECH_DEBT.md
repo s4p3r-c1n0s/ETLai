@@ -133,6 +133,10 @@ If intent classifier confidence is below threshold or ambiguity detector fires 3
 
 **When:** After items **#11** (Code control plane) and **#10** (`TaskPacket` / one card per invoke). Backends must receive task cards from a Python state machine — not agent personas or an LLM orchestrator. Then: choose local model serving stack, build intent/slot schemas for 8 pipeline types, calibrate embeddings.
 
+**Control-plane boundary (see #10 B0 / #11):** User interaction, phase routing, `confirm_graph`, gates, firewall, and packet assembly stay on `CodeBackend`. `LocalLLMBackend` / `CloudBackend` are **workers on one TaskPacket only** — never the pipeline-creation state machine. `ORCHESTRATION.md` is not the control plane.
+
+**Foolproofing (jargon / cold start):** See [docs/FOOLPROOF_REQUIREMENTS_CAPTURE.md](docs/FOOLPROOF_REQUIREMENTS_CAPTURE.md) — adds verb grounding, cold-start gate, confidence gate, completeness checklist before confirm. Cloud remains optional escalation + atom create, not the default requirements brain.
+
 ---
 
 ## 6. Aider support — decouple orchestration from Claude Code
@@ -308,6 +312,8 @@ Orchestrator owns the user channel for phases 0–1. BA is a worker that drafts 
 
 **Depends on:** Item **#11** (Code-first control plane) — **done**. Packets are built and advanced by Python.
 
+**Control-plane rule:** The control plane is **deterministic Code** (`etlai/orchestrator.py` → `TaskRouter`). An LLM may *execute* a task card; it must not *own* phase advance, confirmation, gates, firewall, or packet assembly. `ORCHESTRATION.md` is a thin transitional caller of `build_task_packet` / `run_gate` / `confirm_graph` — superseded as `etlai create` owns the loop. See `workflow/LAYERS.md`.
+
 **Problem:** Layers are detangled in docs (#8) and BA mediation exists (#7), but runtime still thinks in **role bundles** (BA = phases 0–1, Separator = 2–3, …). `build_ba_turn_prompt()` still attaches *both* phase 0 and 1 playbooks. Small local models and item #5 backends need **one invoke = one task card**, with roles optional packaging—not the unit of work.
 
 **Goal:** Code control plane builds a `TaskPacket` per invoke and routes it to a worker backend. Role system prompts become optional allowlist overlays; phase/sub-step cards + schemas are mandatory.
@@ -340,9 +346,10 @@ TaskPacket:
 
 | # | Task | Notes |
 |---|------|--------|
+| B0 | **Non-goal:** LLM orchestrator agent / free-form phase picker | Control plane = deterministic state machine only; LocalLLM never chooses next `task_id` |
 | B1 | `build_task_packet(task_id, **inputs) -> TaskPacket` | Replaces / generalizes `build_ba_turn_prompt`; **exactly one** playbook path |
 | B2 | Wire packets into #11 advance loop | After artifact + gate → next `task_id`; mediation loops stay on 0/1 only |
-| B3 | `etlai create` runs **per `task_id`** | “Separator” = two sequential packets (2 then 3); no persona spawn |
+| B3 | `etlai create` owns the per-`task_id` loop | “Separator” = two sequential packets (2 then 3); no persona spawn. `ORCHESTRATION.md` may document the same APIs as a shim — it is **not** co-equal with the router |
 | B4 | Retry packet = same `task_id` + `gate_errors` in inputs | No re-bundle of sibling phases |
 | B5 | Optional `--task phase_3` for resume/debug | Feeds item #6 `NEXT_STEP.md` later |
 
@@ -372,10 +379,12 @@ TaskPacket:
 
 ### Out of scope (this item)
 
-- Code control-plane state machine ownership (item #11)
+- Code control-plane state machine ownership (item #11 — done)
+- Implementing an LLM “orchestrator agent” (non-goal; see B0)
 - Implementing LocalLLM/Embedding/Cloud backends (item #5)
 - Aider `NEXT_STEP.md` UX (item #6)
 - Firewall physical hardening (item #9)
+- Deleting `ORCHESTRATION.md` yet (still a Claude Code shim until the CLI loop is complete)
 
 **When:** Immediately after #11 (or overlapping once the Code loop owns create). Before #5 model serving.
 
