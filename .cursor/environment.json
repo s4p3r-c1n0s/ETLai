@@ -1,0 +1,5 @@
+{
+  "name": "ETLai",
+  "install": "./.cursor/scripts/cloud-agent-install.sh",
+  "ports": [3000]
+}
