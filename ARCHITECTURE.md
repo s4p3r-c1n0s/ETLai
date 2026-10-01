@@ -326,7 +326,7 @@ orch.get_phase_status()              # which artifacts exist
    b. For each step:
       - read step config from config.json
       - inject reference files (inject_as)
-      - inject input files (auto-injection)
+      - bind files via inputs_map (inbox / prev_output / inbox_all)
       - atom.execute(params_json)
    c. Last step: files → processed/, output written
 5. Failure at any step: all files → rejected/ + .error.txt
