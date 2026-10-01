@@ -54,7 +54,7 @@ etlai/
   orchestrator.py     ← 5-agent coordination (gates, firewall, context)
   registry.py         ← scans manifests, dynamically builds Dagster Definitions
   atoms/              ← 10 shipped atoms (vlookup, computed_column, group_aggregate, ...)
-  helpers/            ← folders, config_store, env_loader, notifier
+  helpers/            ← folders, config_store, env_loader, input_resolver, notifier
   sensors/            ← hot_folder_sensor factory
   scaffold/           ← templates copied by etlai init (workflow, agents, docs)
 ```
@@ -76,7 +76,7 @@ etlai run                           # start Dagster dev server
   sensors dynamically. No static imports.
 - `orchestrator.py` coordinates the 5-agent pipeline creation: gate validation,
   firewall enforcement, agent context building.
-- Each manifest wires: atoms + config + triggers + optional inputs (inject_as, input_from)
+- Each manifest wires: atoms + config + triggers + explicit `inputs_map` (file binding), plus optional inputs (inject_as, input_from)
 - Atoms: `execute(params_json: str) -> str` returning `{"success": bool, "message": str}`
 - Resolution: user `atoms/` → package `etlai.atoms`
 - config.json: every step reads its `step_N` key (including `step_0`)
@@ -94,7 +94,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for full details.
 ## Important constraints
 
 - Python 3.10+ required
-- CSV only for processing (sensors accept .xlsx filenames but atoms use CSV readers)
+- Processing is CSV-centric — atoms read CSVs via pandas; `mock_generate` is the one atom that emits `.xlsx`
 - Tkinter required only for the `path: ask` folder picker during `etlai sync`
 - Do not commit pipeline runtime data (inbox, staging, processed, rejected, output, config.json)
 - Secrets in `~/.etlai/secrets.env`, never committed
