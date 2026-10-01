@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENT.md
 
 Guidance for coding agents working in this repository.
 
