@@ -1,3 +1,17 @@
 name: vlookup_rollnumber
 atom: vlookup
 min_files: 2
+
+inputs:
+  - name: student_records
+    role: transient
+    description: "Student names + roll numbers (left side of the join)"
+    pattern: "student*.csv"
+  - name: marks_data
+    role: transient
+    description: "Roll numbers + marks (right side of the join)"
+    pattern: "marks*.csv"
+
+inputs_map:
+  - param: left_file
+  - param: right_file

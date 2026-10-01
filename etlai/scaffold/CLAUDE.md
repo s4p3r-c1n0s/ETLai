@@ -126,7 +126,7 @@ End-user guide: `HOW_TO_USE_AGENTS.md`
 | `sort_rows` | Sort by columns | `input_file, sort_columns: [], ascending, target_path` |
 | `groupby` | Group by column with count only | `input_file, group_column, target_path` |
 | `api_fetch` | HTTP fetch, parse response to CSV | `endpoint, method, headers, params, response_format, data_path, field_mapping, target_path` |
-| `mock_generate` | Generate synthetic data from headers | `input_files, target_path, rows` |
+| `mock_generate` | Generate synthetic data from headers → single XLSX | `input_files, target_path, rows` |
 
 If a shipped atom handles the operation, USE IT. Do not create a new one.
 

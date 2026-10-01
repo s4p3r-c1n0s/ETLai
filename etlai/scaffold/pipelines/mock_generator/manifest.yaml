@@ -1,3 +1,6 @@
 name: mock_generator
 atom: mock_generate
 min_files: 1
+inputs_map:
+  - param: input_files
+    source: inbox_all

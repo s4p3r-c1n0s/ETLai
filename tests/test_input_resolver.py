@@ -1,4 +1,4 @@
-"""Tests for InputResolver — file path injection and pattern ordering."""
+"""Tests for InputResolver — explicit file path injection and pattern ordering."""
 
 import pytest
 
@@ -10,92 +10,13 @@ def resolver():
     return InputResolver()
 
 
-class TestFallbackMode:
-    """Legacy heuristic behavior (no inputs_map)."""
-
-    def test_first_step_two_files(self, resolver):
-        config = {}
-        resolver.resolve(
-            is_first=True,
-            file_paths=["/a.csv", "/b.csv"],
-            prev_output=None,
-            config=config,
-        )
-        assert config["left_file"] == "/a.csv"
-        assert config["right_file"] == "/b.csv"
-
-    def test_first_step_one_file_right_present(self, resolver):
-        config = {"right_file": "/ref.csv"}
-        resolver.resolve(
-            is_first=True,
-            file_paths=["/a.csv"],
-            prev_output=None,
-            config=config,
-        )
-        assert config["left_file"] == "/a.csv"
-        assert config["right_file"] == "/ref.csv"
-
-    def test_first_step_one_file(self, resolver):
-        config = {}
-        resolver.resolve(
-            is_first=True,
-            file_paths=["/a.csv"],
-            prev_output=None,
-            config=config,
-        )
-        assert config["input_file"] == "/a.csv"
-        assert "left_file" not in config
-
-    def test_continuation_right_present(self, resolver):
-        config = {"right_file": "/ref.csv"}
-        resolver.resolve(
-            is_first=False,
-            file_paths=["/a.csv"],
-            prev_output="/prev.csv",
-            config=config,
-        )
-        assert config["left_file"] == "/prev.csv"
-
-    def test_continuation_no_right(self, resolver):
-        config = {}
-        resolver.resolve(
-            is_first=False,
-            file_paths=["/a.csv"],
-            prev_output="/prev.csv",
-            config=config,
-        )
-        assert config["input_file"] == "/prev.csv"
-        assert "left_file" not in config
-
-    def test_skips_if_already_set(self, resolver):
-        config = {"input_file": "/already.csv"}
-        resolver.resolve(
-            is_first=True,
-            file_paths=["/a.csv"],
-            prev_output=None,
-            config=config,
-        )
-        assert config["input_file"] == "/already.csv"
-
-    def test_skips_if_left_already_set(self, resolver):
-        config = {"left_file": "/already.csv"}
-        resolver.resolve(
-            is_first=False,
-            file_paths=[],
-            prev_output="/prev.csv",
-            config=config,
-        )
-        assert config["left_file"] == "/already.csv"
-
-
 class TestExplicitMode:
-    """inputs_map declared in manifest step."""
+    """inputs_map declared in manifest step (the only supported mode)."""
 
     def test_two_files_explicit(self, resolver):
         config = {}
         inputs_map = [{"param": "left_file"}, {"param": "right_file"}]
         resolver.resolve(
-            is_first=True,
             file_paths=["/a.csv", "/b.csv"],
             prev_output=None,
             config=config,
@@ -112,7 +33,6 @@ class TestExplicitMode:
             {"param": "source_c"},
         ]
         resolver.resolve(
-            is_first=True,
             file_paths=["/x.csv", "/y.csv", "/z.csv"],
             prev_output=None,
             config=config,
@@ -129,7 +49,6 @@ class TestExplicitMode:
         ]
         files = [f"/{i}.csv" for i in range(5)]
         resolver.resolve(
-            is_first=True,
             file_paths=files,
             prev_output=None,
             config=config,
@@ -138,24 +57,28 @@ class TestExplicitMode:
         for i in range(5):
             assert config[f"file_{i}"] == f"/{i}.csv"
 
-    def test_continuation_explicit_prev_output_first(self, resolver):
+    def test_custom_param_names(self, resolver):
         config = {}
-        inputs_map = [{"param": "input_file"}, {"param": "lookup"}]
+        inputs_map = [
+            {"param": "transactions_file"},
+            {"param": "accounts_file"},
+            {"param": "rates_file"},
+        ]
         resolver.resolve(
-            is_first=False,
-            file_paths=["/a.csv", "/b.csv"],
-            prev_output="/prev.csv",
+            file_paths=["/tx.csv", "/acc.csv", "/rates.csv"],
+            prev_output=None,
             config=config,
             inputs_map=inputs_map,
         )
-        assert config["input_file"] == "/prev.csv"
-        assert config["lookup"] == "/b.csv"
+        assert config["transactions_file"] == "/tx.csv"
+        assert config["accounts_file"] == "/acc.csv"
+        assert config["rates_file"] == "/rates.csv"
 
     def test_skips_already_set_params(self, resolver):
+        """A param already populated (e.g. by inject_as) is left untouched."""
         config = {"source_b": "/already.csv"}
         inputs_map = [{"param": "source_a"}, {"param": "source_b"}]
         resolver.resolve(
-            is_first=True,
             file_paths=["/x.csv", "/y.csv"],
             prev_output=None,
             config=config,
@@ -168,7 +91,6 @@ class TestExplicitMode:
         config = {}
         inputs_map = [{"param": "a"}, {"param": "b"}, {"param": "c"}]
         resolver.resolve(
-            is_first=True,
             file_paths=["/only.csv"],
             prev_output=None,
             config=config,
@@ -178,23 +100,66 @@ class TestExplicitMode:
         assert "b" not in config
         assert "c" not in config
 
-    def test_custom_param_names(self, resolver):
+    def test_prev_output_source(self, resolver):
         config = {}
-        inputs_map = [
-            {"param": "transactions_file"},
-            {"param": "accounts_file"},
-            {"param": "rates_file"},
-        ]
+        inputs_map = [{"param": "input_file", "source": "prev_output"}]
         resolver.resolve(
-            is_first=True,
-            file_paths=["/tx.csv", "/acc.csv", "/rates.csv"],
+            file_paths=[],
+            prev_output="/prev.csv",
+            config=config,
+            inputs_map=inputs_map,
+        )
+        assert config["input_file"] == "/prev.csv"
+
+    def test_prev_output_none_does_not_bind(self, resolver):
+        config = {}
+        inputs_map = [{"param": "input_file", "source": "prev_output"}]
+        resolver.resolve(
+            file_paths=[],
             prev_output=None,
             config=config,
             inputs_map=inputs_map,
         )
-        assert config["transactions_file"] == "/tx.csv"
-        assert config["accounts_file"] == "/acc.csv"
-        assert config["rates_file"] == "/rates.csv"
+        assert "input_file" not in config
+
+    def test_inbox_all_source(self, resolver):
+        config = {}
+        inputs_map = [{"param": "input_files", "source": "inbox_all"}]
+        resolver.resolve(
+            file_paths=["/a.csv", "/b.csv"],
+            prev_output=None,
+            config=config,
+            inputs_map=inputs_map,
+        )
+        assert config["input_files"] == ["/a.csv", "/b.csv"]
+
+    def test_missing_inputs_map_with_files_raises(self, resolver):
+        with pytest.raises(ValueError, match="inputs_map"):
+            resolver.resolve(
+                file_paths=["/a.csv"],
+                prev_output=None,
+                config={},
+                inputs_map=None,
+            )
+
+    def test_missing_inputs_map_no_files_noop(self, resolver):
+        config = {"endpoint": "https://example.test"}
+        result = resolver.resolve(
+            file_paths=[],
+            prev_output=None,
+            config=config,
+            inputs_map=None,
+        )
+        assert result == {"endpoint": "https://example.test"}
+
+    def test_unknown_source_raises(self, resolver):
+        with pytest.raises(ValueError, match="Unknown source"):
+            resolver.resolve(
+                file_paths=["/a.csv"],
+                prev_output=None,
+                config={},
+                inputs_map=[{"param": "x", "source": "bogus"}],
+            )
 
 
 class TestOrderFilesByPattern:

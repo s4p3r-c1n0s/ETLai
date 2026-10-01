@@ -1,4 +1,28 @@
-"""InputResolver — maps inbox files and previous outputs to atom config params."""
+"""InputResolver — binds inbound files to atom config params (explicit only).
+
+Atom file inputs are declared per-step in the manifest via ``inputs_map``, an
+ordered list of ``{param, source}`` entries:
+
+    inputs_map:
+      - param: left_file                 # next inbox file (source: inbox)
+      - param: right_file                # second inbox file
+      - param: input_file
+        source: prev_output              # previous step's output path
+      - param: input_files
+        source: inbox_all                # all inbox files as a list
+
+Sources:
+  * ``inbox`` (default) — the next unclaimed inbox file, in pipeline order
+  * ``prev_output``     — the previous step's output path
+  * ``inbox_all``       — the full list of inbox files
+
+Reference files are NOT resolved here: the registry injects them via the
+``inject_as`` declaration before this resolver runs. A param that is already
+populated (by ``inject_as`` or an explicit value in config.json) is left alone.
+
+There is no heuristic fallback: a step with inbound files MUST declare
+``inputs_map``, otherwise resolution fails loudly.
+"""
 
 from __future__ import annotations
 
@@ -46,92 +70,68 @@ def order_files_by_pattern(file_paths: list[str], inputs: list[dict]) -> list[st
 
 
 class InputResolver:
-    """Resolves file paths into atom config params.
+    """Maps inbound files and previous outputs to atom config params.
 
-    Supports two modes:
-    1. Explicit: manifest step declares `inputs_map` — N files, any param names
-    2. Fallback: legacy heuristic for manifests without inputs_map
+    Explicit only: every step's manifest declares ``inputs_map`` naming the
+    param(s) it binds and the source of each path.
     """
 
     def resolve(
         self,
         *,
-        is_first: bool,
         file_paths: list[str],
         prev_output: str | None,
         config: dict,
-        inputs_map: list[dict] | None = None,
+        inputs_map: list[dict] | None,
     ) -> dict:
         """Inject file paths into config and return it.
 
         Args:
-            is_first: True if this is step 0
-            file_paths: inbox files available to the pipeline
-            prev_output: output path from the previous step (None if is_first)
+            file_paths: inbox files available to the pipeline (empty for API pipelines)
+            prev_output: output path from the previous step (None for the first step)
             config: current step config (mutated in place)
-            inputs_map: optional explicit mapping from manifest step declaration
+            inputs_map: explicit mapping from the manifest step declaration,
                         e.g. [{"param": "left_file"}, {"param": "right_file"}]
 
         Returns:
             The mutated config dict with file paths injected.
         """
-        if inputs_map:
-            return self._resolve_explicit(is_first, file_paths, prev_output, config, inputs_map)
-        return self._resolve_fallback(is_first, file_paths, prev_output, config)
+        if not inputs_map:
+            if file_paths:
+                raise ValueError(
+                    "Step has inbound files but no `inputs_map` declared. "
+                    "Add an explicit `inputs_map` to the manifest step, e.g.:\n"
+                    "  inputs_map:\n"
+                    "    - param: input_file"
+                )
+            # No inbound files and no declared mapping (e.g. an API fetch
+            # pipeline) — nothing to bind.
+            return config
 
-    def _resolve_explicit(
-        self,
-        is_first: bool,
-        file_paths: list[str],
-        prev_output: str | None,
-        config: dict,
-        inputs_map: list[dict],
-    ) -> dict:
-        """Explicit mode: assign files to params in declared order."""
-        if is_first:
-            for i, mapping in enumerate(inputs_map):
-                param = mapping["param"]
-                if param in config:
-                    continue
-                source = mapping.get("source", "inbox")
-                if source == "inbox" and i < len(file_paths):
-                    config[param] = file_paths[i]
-        else:
-            first_param = inputs_map[0]["param"]
-            if first_param not in config:
-                config[first_param] = prev_output
-            for i, mapping in enumerate(inputs_map[1:], start=1):
-                param = mapping["param"]
-                if param in config:
-                    continue
-                source = mapping.get("source", "inbox")
-                if source == "inbox" and i < len(file_paths):
-                    config[param] = file_paths[i]
+        cursor = 0
+        for mapping in inputs_map:
+            param = mapping["param"]
 
-        return config
+            # Already populated (reference injection via inject_as, or an
+            # explicit path in config.json) — leave it untouched.
+            if param in config:
+                continue
 
-    def _resolve_fallback(
-        self,
-        is_first: bool,
-        file_paths: list[str],
-        prev_output: str | None,
-        config: dict,
-    ) -> dict:
-        """Legacy heuristic for manifests without inputs_map."""
-        if is_first:
-            if file_paths and "left_file" not in config and "input_file" not in config and "input_files" not in config:
-                if len(file_paths) >= 2:
-                    config["left_file"] = file_paths[0]
-                    config["right_file"] = file_paths[1]
-                elif "right_file" in config:
-                    config["left_file"] = file_paths[0]
-                else:
-                    config["input_file"] = file_paths[0]
-        else:
-            if "left_file" not in config and "input_file" not in config:
-                if "right_file" in config:
-                    config["left_file"] = prev_output
-                else:
-                    config["input_file"] = prev_output
+            source = mapping.get("source", "inbox")
+
+            if source == "prev_output":
+                if prev_output is not None:
+                    config[param] = prev_output
+            elif source == "inbox_all":
+                config[param] = list(file_paths)
+            elif source == "inbox":
+                if cursor < len(file_paths):
+                    config[param] = file_paths[cursor]
+                    cursor += 1
+            else:
+                raise ValueError(
+                    f"Unknown source {source!r} in inputs_map for param {param!r}. "
+                    "Expected one of: inbox, prev_output, inbox_all."
+                )
 
         return config

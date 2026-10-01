@@ -133,9 +133,9 @@ class TestExecuteStep:
             pipeline_name="test_pipe",
             step_index=0,
             file_paths=[str(input_csv)],
-            is_first=True,
             is_last=True,
             context=None,
+            inputs_map=[{"param": "input_file"}],
         )
         assert result is not None
 
@@ -171,9 +171,9 @@ class TestExecuteStep:
             pipeline_name="test_pipe",
             step_index=0,
             file_paths=[str(input_csv)],
-            is_first=True,
             is_last=True,
             context=mock_context,
+            inputs_map=[{"param": "input_file"}],
         )
         assert result is not None
 
@@ -203,9 +203,9 @@ class TestExecuteStep:
                 pipeline_name="test_pipe",
                 step_index=0,
                 file_paths=[str(input_csv)],
-                is_first=True,
                 is_last=True,
                 context=None,
+                inputs_map=[{"param": "input_file"}],
             )
 
         # Atom never ran; files were moved to rejected
@@ -265,10 +265,10 @@ class TestExecuteStep:
             pipeline_name="test_pipe",
             step_index=0,
             file_paths=[str(input_csv)],
-            is_first=True,
             is_last=True,
             context=None,
             input_metadata=input_metadata,
+            inputs_map=[{"param": "left_file"}, {"param": "right_file"}],
         )
 
         # The reference file should be injected as "right_file"
@@ -325,10 +325,10 @@ class TestExecuteStep:
             pipeline_name="test_pipe",
             step_index=0,
             file_paths=[str(input_csv)],
-            is_first=True,
             is_last=True,
             context=None,
             input_metadata=input_metadata,
+            inputs_map=[{"param": "left_file"}, {"param": "right_file"}],
         )
 
         # right_file from inject_as, left_file from auto-injection (1 transient + right_file present)
@@ -384,10 +384,10 @@ class TestExecuteStep:
             pipeline_name="test_pipe",
             step_index=0,
             file_paths=[str(input_csv)],
-            is_first=True,
             is_last=True,
             context=None,
             input_metadata=input_metadata,
+            inputs_map=[{"param": "input_file"}],
         )
 
         # right_file should NOT be injected (targets step 1, we're in step 0)
@@ -557,9 +557,9 @@ class TestStep0ConfigRegression:
             pipeline_name="test_pipe",
             step_index=0,
             file_paths=[str(input_csv)],
-            is_first=True,
             is_last=False,
             context=None,
+            inputs_map=[{"param": "input_file"}],
         )
 
         assert received_config["left_column"] == "sku"
@@ -623,11 +623,14 @@ class TestMidPipelineJoinRegression:
             pipeline_name="test_pipe",
             step_index=1,
             file_paths=[str(prev_output_file)],
-            is_first=False,
             is_last=True,
             prev_output=str(prev_output_file),
             context=None,
             input_metadata=input_metadata,
+            inputs_map=[
+                {"param": "left_file", "source": "prev_output"},
+                {"param": "right_file"},
+            ],
         )
 
         # right_file set by inject_as, left_file should be prev_output
@@ -676,10 +679,10 @@ class TestMidPipelineJoinRegression:
             pipeline_name="test_pipe",
             step_index=1,
             file_paths=[str(prev_output_file)],
-            is_first=False,
             is_last=True,
             prev_output=str(prev_output_file),
             context=None,
+            inputs_map=[{"param": "input_file", "source": "prev_output"}],
         )
 
         # No inject_as → input_file = prev_output (normal behavior)

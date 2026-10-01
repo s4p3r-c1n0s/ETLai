@@ -19,7 +19,13 @@ steps:
       - param: left_file
       - param: right_file
   - atom: groupby
+    inputs_map:
+      - param: input_file
+        source: prev_output
   - atom: rename_columns
+    inputs_map:
+      - param: input_file
+        source: prev_output
 
 trigger:
   rules:

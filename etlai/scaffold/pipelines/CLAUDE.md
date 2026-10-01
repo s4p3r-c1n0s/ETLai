@@ -21,6 +21,10 @@ path: ask                           # Prompt user for data folder location durin
 atom: <atom_name>
 min_files: <count of transient inputs>
 
+inputs_map:                        # explicit file binding (see "inputs_map Rules")
+  - param: input_file              # or left_file / right_file per atom contract
+  - param: right_file              # optional: for join atoms (left_file + right_file)
+
 inputs:
   - name: <source_name>
     role: transient
@@ -65,11 +69,27 @@ inputs:
 steps:
   - name: enrich_data           # Optional: step produces <name>.csv as output
     atom: <atom_for_op_1>
+    inputs_map:
+      - param: left_file        # step 0 consumes inbox files (or prev_output)
+      - param: right_file
+  - atom: <atom_for_op_2>
+    inputs_map:
+      - param: input_file
+        source: prev_output
   - name: detail_export         # Optional: named steps become first-class outputs
-    atom: <atom_for_op_2>
-  - atom: <atom_for_op_3>       # input_from: reads step 0's output instead of step 1's
+    atom: <atom_for_op_3>
+    inputs_map:
+      - param: input_file
+        source: prev_output
+  - atom: <atom_for_op_4>       # input_from: reads step 0's output instead of previous
     input_from: 0
+    inputs_map:
+      - param: input_file
+        source: prev_output
   - atom: rename_columns        # ALWAYS last step (produces output.csv)
+    inputs_map:
+      - param: input_file
+        source: prev_output
 
 trigger:
   rules:
@@ -144,6 +164,43 @@ How to determine the correct step and param:
 1. Find which atomic operation uses this reference source (from atomic_operations.yaml)
 2. That operation maps to a step index (same order as steps list)
 3. The atom for that step expects the file as a specific param (typically `right_file` for joins, `input_file` for single-input atoms)
+
+## inputs_map Rules
+
+**Every step that reads a file MUST declare `inputs_map`.** File binding is
+explicit — there is no heuristic fallback, and a missing `inputs_map` fails at
+runtime.
+
+Each entry is `{param, source}`:
+
+| source        | binds                                           |
+|---------------|-------------------------------------------------|
+| `inbox` (default) | the next unclaimed inbox file, in pipeline order |
+| `prev_output`     | the previous step's output path                 |
+| `inbox_all`       | the full list of inbox files (e.g. `input_files`) |
+
+Rules:
+1. Step 0 binds inbox files: joins declare `left_file` + `right_file`, others
+   declare `input_file` (or `input_files` with `source: inbox_all`).
+2. Steps ≥ 1 bind `prev_output`: declare `input_file` with `source: prev_output`
+   (or `left_file` for a mid-pipeline join whose `right_file` comes from inject_as).
+3. Reference files are bound by `inject_as`, NOT by `inputs_map`. If `inject_as`
+   already set a param, list it in `inputs_map` anyway — the resolver skips it —
+   so the mapping stays complete and self-documenting.
+4. The param name must match what the atom reads (`input_file`, `left_file`,
+   `right_file`, `input_files`). Check the atom's docstring.
+
+```yaml
+steps:
+  - atom: vlookup               # step 0: joins two inbox files
+    inputs_map:
+      - param: left_file
+      - param: right_file
+  - atom: group_aggregate       # step 1: reads step 0 output
+    inputs_map:
+      - param: input_file
+        source: prev_output
+```
 
 ## path: Field
 
@@ -245,6 +302,7 @@ All named intermediate steps produce `{name}.csv` in the output folder. The fina
 - Add `rename_columns` as the explicit last step
 - Translate ALL placeholders to real values in config.json (col_a → real_name)
 - Wire `inject_as` for every reference input
+- Declare `inputs_map` on every file-reading step (see "inputs_map Rules")
 - Include `load_files_op_name` for composite pipelines
 - Verify step count in manifest matches step count in config.json
 - Run `etlai sync` after assembly to validate and create folders

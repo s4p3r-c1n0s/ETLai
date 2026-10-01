@@ -89,6 +89,8 @@ there is no interactive prompt. A missing config raises with a helpful message.
 name: pipeline_name
 atom: atom_module_name
 min_files: 1
+inputs_map:
+  - param: input_file
 path: ask                        # Tkinter folder picker during sync
 trigger:
   rules:
@@ -114,14 +116,32 @@ inputs:
       param: right_file
 steps:
   - atom: vlookup                # step 0: join sales + catalog
+    inputs_map:
+      - param: left_file
+      - param: right_file
   - atom: computed_column        # step 1: compute revenue
+    inputs_map:
+      - param: input_file
+        source: prev_output
   - atom: flag_rows              # step 2: flag low margin
     input_from: 1                # reads step 1 output, not step 2's
+    inputs_map:
+      - param: input_file
+        source: prev_output
   - name: detail_export          # named step → produces detail_export.csv
     atom: rename_columns
+    inputs_map:
+      - param: input_file
+        source: prev_output
   - atom: group_aggregate        # step 4
     input_from: 2                # reads step 2, not step 3 (branch)
+    inputs_map:
+      - param: input_file
+        source: prev_output
   - atom: rename_columns         # final step (always rename_columns)
+    inputs_map:
+      - param: input_file
+        source: prev_output
 trigger:
   rules:
     - type: inbox_files
@@ -162,22 +182,34 @@ trigger:
 
 ### File Injection Logic
 
-The framework injects file paths into atom config before execution:
+File inputs are declared **explicitly** per step via `inputs_map`. The framework
+injects file paths into atom config before execution in two passes:
 
-```
-Step 0 (is_first=True):
-  inject_as runs first (sets e.g. right_file from reference/)
-  then auto-injection:
-    2+ inbox files           → left_file + right_file
-    1 file + right_file set  → left_file
-    1 file alone             → input_file
+1. **Reference injection (`inject_as`)** runs first — it sets params from
+   `reference/` (e.g. `right_file`). A param that is already populated is left
+   untouched by the resolver.
+2. **`inputs_map`** binds the remaining params by `source`:
 
-Steps ≥ 1 (is_first=False):
-  inject_as runs first (sets e.g. right_file from reference/)
-  then auto-injection:
-    right_file already set   → left_file = prev_output
-    otherwise                → input_file = prev_output
+| source           | binds                                             |
+|------------------|---------------------------------------------------|
+| `inbox` (default) | the next unclaimed inbox file, in pipeline order |
+| `prev_output`     | the previous step's output path                   |
+| `inbox_all`       | the full list of inbox files (e.g. `input_files`) |
+
+```yaml
+steps:
+  - atom: vlookup
+    inputs_map:
+      - param: left_file
+      - param: right_file          # skipped if already set via inject_as
+  - atom: groupby
+    inputs_map:
+      - param: input_file
+        source: prev_output
 ```
+
+A step with inbound files that omits `inputs_map` fails loudly rather than
+guessing.
 
 ### Target Path (Output Naming)
 
@@ -325,7 +357,7 @@ orch.get_phase_status()              # which artifacts exist
 | `sort_rows` | Sort by columns | input_file, sort_columns, ascending |
 | `groupby` | Group by count | input_file, group_column |
 | `api_fetch` | HTTP → CSV | endpoint, method, headers, field_mapping |
-| `mock_generate` | Synthetic data | input_files, rows |
+| `mock_generate` | Synthetic data → single XLSX | input_files, rows |
 
 ---
 

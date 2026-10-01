@@ -150,31 +150,25 @@ class TestMockGenerate:
     """Tests for mock_generate atom."""
 
     def test_basic_generation(self, tmp_path):
-        """Test basic synthetic data generation."""
+        """Test basic synthetic data generation as a single XLSX."""
         from etlai.atoms.mock_generate import execute
 
         input_csv = tmp_path / "template.csv"
-        output_dir = tmp_path / "output"
-        output_dir.mkdir()
-
         input_csv.write_text("name,email,age\n")
 
         params = {
             "input_files": [str(input_csv)],
-            "target_path": str(output_dir) + "/",
-            "rows": 10
+            "target_path": str(tmp_path / "output.csv"),
+            "rows": 10,
         }
 
         result_json = execute(json.dumps(params))
         result = json.loads(result_json)
 
         assert result["success"] is True
+        assert result["output_file"].endswith(".xlsx")
 
-        # Verify output file exists and has correct number of rows
-        output_files = list(output_dir.glob("*.csv"))
-        assert len(output_files) == 1
-
-        df = pd.read_csv(output_files[0])
+        df = pd.read_excel(result["output_file"], sheet_name=0)
         assert len(df) == 10
         assert list(df.columns) == ["name", "email", "age"]
 
@@ -183,15 +177,12 @@ class TestMockGenerate:
         from etlai.atoms.mock_generate import execute
 
         input_csv = tmp_path / "template.csv"
-        output_dir = tmp_path / "output"
-        output_dir.mkdir()
-
         input_csv.write_text("")
 
         params = {
             "input_files": [str(input_csv)],
-            "target_path": str(output_dir) + "/",
-            "rows": 5
+            "target_path": str(tmp_path / "output.csv"),
+            "rows": 5,
         }
 
         result_json = execute(json.dumps(params))

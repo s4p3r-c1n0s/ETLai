@@ -4,29 +4,34 @@ All notable changes to ETLai are documented here.
 
 ## [Unreleased]
 
-### Changed
-- Detangle phase playbooks from role prompts: phases = task contracts; roles = access policy; Orchestrator = control plane (`workflow/LAYERS.md`)
-- Document Code-first control plane sequence in TECH_DEBT (#11 before #10/#5/#6); demote `ORCHESTRATION.md` to transitional shim
-- Orchestrator owns the user channel for phases 0–1; Business Analyst is a worker (TECH_DEBT #7)
-- `owner_confirmed` may only be set via `Orchestrator.confirm_graph()` after explicit user assent
-- `etlai create` prints BA turn prompts, relays questions, and confirms interactively when a TTY is available
+<!-- empty, ready for next cycle -->
 
-### Added
-- `workflow/LAYERS.md` — layer contract for phase / role / control plane
-- Code control plane: `control_session.json`, `advance` / `retry` / `submit_worker`, `etlai create --resume --advance` (TECH_DEBT #11)
-- BA mediation APIs: `start_ba_session`, `build_ba_turn_prompt`, `record_ba_questions`, `record_user_answers`, `confirm_graph`, `prepare_gate1`
-
-## [0.6.0] — 2026-08-03
+## [0.6.0] — 2026-10-02
 
 ### Removed
 - Forms concept entirely (`etlai/forms/`, manifest `form:` field, runtime configure step)
 - Tkinter column pickers (`vlookup_column_picker`, `groupby_picker`); params come only from config.json
 - `path: ask` folder picker during `etlai sync` is retained
 
+### Added
+- `inputs_map` sources: `prev_output` and `inbox_all` (previously only positional `inbox`)
+- `workflow/LAYERS.md` — layer contract for phase / role / control plane
+- Code control plane: `control_session.json`, `advance` / `retry` / `submit_worker`, `etlai create --resume --advance` (TECH_DEBT #11)
+- BA mediation APIs: `start_ba_session`, `build_ba_turn_prompt`, `record_ba_questions`, `record_user_answers`, `confirm_graph`, `prepare_gate1`
+
 ### Changed
 - **Breaking:** `config.json` always uses `step_N` keys, including `step_0` (no flat top-level step-0 params)
 - Gate 6 requires `step_0` for single-atom and composite pipelines
 - Scaffold example configs (`groupby_religion`, `vlookup_rollnumber`, `newsdata_fetch`) ship under `step_0`
+- **Breaking:** `InputResolver` is explicit-only — the legacy heuristic fallback is removed. Every file-consuming step must declare `inputs_map` (`source: inbox | prev_output | inbox_all`); a step with inbound files but no `inputs_map` fails loudly.
+- Scaffold manifests updated to declare `inputs_map` (single-atom and composite); `mock_generator` gains `source: inbox_all` and a `config.json`
+- `_execute_step` no longer takes `is_first`; file binding is fully driven by `source`
+- `mock_generate` now writes a single `.xlsx` (one sheet per input header) to `target_path`, restoring the one-file-per-atom contract instead of emitting N CSVs into a directory
+- Detangle phase playbooks from role prompts: phases = task contracts; roles = access policy; Orchestrator = control plane (`workflow/LAYERS.md`)
+- Document Code-first control plane sequence in TECH_DEBT (#11 before #10/#5/#6); demote `ORCHESTRATION.md` to transitional shim
+- Orchestrator owns the user channel for phases 0–1; Business Analyst is a worker (TECH_DEBT #7)
+- `owner_confirmed` may only be set via `Orchestrator.confirm_graph()` after explicit user assent
+- `etlai create` prints BA turn prompts, relays questions, and confirms interactively when a TTY is available
 
 ### Fixed
 - TECH_DEBT #2: step_0 flat config special case eliminated

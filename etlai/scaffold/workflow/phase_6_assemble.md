@@ -40,12 +40,16 @@ Use this to design pipelines with multiple outputs: place strategic steps (renam
 6. Build manifest.yaml:
    a. Set pipeline `name` from pipeline_graph.yaml.
    b. Build `steps:` list in linearized order, each referencing its atom.
-   c. For any step that needs non-adjacent input, add `input_from: <step_index>`.
-   d. Build `inputs:` declarations from pipeline_graph.yaml data_sources:
+   c. Declare `inputs_map` on every step (see `pipelines/CLAUDE.md` → "inputs_map Rules"):
+      - Step 0 binds inbox files (`left_file`/`right_file`, `input_file`, or `input_files` + `source: inbox_all`).
+      - Every later step binds `prev_output` (`input_file` with `source: prev_output`, or `left_file` for a mid-pipeline join).
+      - Reference params set by `inject_as` are listed but skipped by the resolver.
+   d. For any step that needs non-adjacent input, add `input_from: <step_index>`.
+   e. Build `inputs:` declarations from pipeline_graph.yaml data_sources:
       - role: reference for permanent data, role: transient for incoming data
       - Add `inject_as:` for each reference source (map to the step + param that needs it)
-   e. Build `trigger:` from pipeline_graph.yaml triggers.
-   f. Add a final step: `atom: rename_columns` (rehydration).
+   f. Build `trigger:` from pipeline_graph.yaml triggers.
+   g. Add a final step: `atom: rename_columns` (rehydration).
 7. Build config.json:
    a. For each step, translate generic params into real values using business_mapping.json:
       - `col_a` → look up real_name in business_mapping.columns → use that as param value
@@ -99,6 +103,7 @@ The atom receives real column names via config — it doesn't know what "sku" me
 
 - Pre-write config.json for every step (no UI — params come solely from config)
 - Wire `inject_as` for every reference data source (never leave reference file discovery to the atom)
+- Declare `inputs_map` on every step — explicit file binding, no heuristic fallback
 - Add `rename_columns` as the explicit final step
 - Set `min_files` based on count of transient inputs
 - Include `load_files_op_name` for composite pipelines
@@ -119,4 +124,4 @@ After assembling manifest.yaml and config.json, run:
 python workflow/validators/gate_6_manifest_valid.py pipelines/<name>/ .
 ```
 
-Must return PASS. Checks: required fields present, all atoms exist, reference inputs have inject_as, last step is rename_columns, no un-translated placeholders in config.json.
+Must return PASS. Checks: required fields present, all atoms exist, reference inputs have inject_as, last step is rename_columns, every step declares `inputs_map`, no un-translated placeholders in config.json.

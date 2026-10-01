@@ -5,6 +5,7 @@ Checks:
 - config.json has entries for each step
 - Reference inputs have inject_as declarations
 - Last step is rename_columns (rehydration)
+- Every file-reading step declares inputs_map (explicit file binding)
 - All referenced atoms exist on disk
 - No generic placeholders leaked into config (col_a, threshold_1 should be real values)
 
@@ -21,6 +22,15 @@ import yaml
 
 
 PLACEHOLDER_PATTERN = re.compile(r"^(col_[a-z]|source_\d+|threshold_\d+|computed_\d+|flag_\d+)$")
+
+
+def _consumes_inbox_files(manifest: dict) -> bool:
+    """True if a single-atom manifest reads at least one inbox file."""
+    min_files = manifest.get("min_files")
+    if min_files is None:
+        transient = [i for i in (manifest.get("inputs") or []) if i.get("role") == "transient"]
+        min_files = len(transient) or 1
+    return int(min_files) > 0
 
 
 def validate(pipeline_dir: Path, project_root: Path) -> tuple[bool, list[str]]:
@@ -61,6 +71,14 @@ def validate(pipeline_dir: Path, project_root: Path) -> tuple[bool, list[str]]:
                 errors.append(f"steps[{i}].atom is empty")
                 continue
 
+            # Every step must declare explicit file binding (no heuristic fallback)
+            if not step.get("inputs_map"):
+                errors.append(
+                    f"steps[{i}] '{step_atom}' is missing 'inputs_map' — "
+                    "every step must declare explicit file binding "
+                    "(source: inbox | prev_output | inbox_all)"
+                )
+
             # Verify atom exists
             user_path = project_root / "atoms" / f"{step_atom}.py"
             shipped = False
@@ -90,6 +108,12 @@ def validate(pipeline_dir: Path, project_root: Path) -> tuple[bool, list[str]]:
 
     else:
         # Single atom pipeline
+        if _consumes_inbox_files(manifest) and not manifest.get("inputs_map"):
+            errors.append(
+                "manifest.inputs_map is missing — file-consuming pipelines must "
+                "declare explicit file binding (source: inbox | prev_output | inbox_all)"
+            )
+
         user_path = project_root / "atoms" / f"{atom}.py"
         shipped = False
         try:

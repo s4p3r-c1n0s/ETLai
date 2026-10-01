@@ -1,0 +1,30 @@
+{
+  "step_0": {
+    "left_column": "roll number",
+    "right_column": "roll number",
+    "left_output_columns": [
+      "roll number",
+      "first name",
+      "last name",
+      "middle name",
+      "religion",
+      "gender",
+      "birth date",
+      "section"
+    ],
+    "right_output_columns": [
+      "subject",
+      "marks",
+      "testType"
+    ]
+  },
+  "step_1": {
+    "group_column": "religion"
+  },
+  "step_2": {
+    "mapping": {
+      "religion": "Religion",
+      "count": "Student Count"
+    }
+  }
+}

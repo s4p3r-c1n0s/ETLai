@@ -64,6 +64,9 @@ Drop files into `inbox/`. Sensor detects stable files and triggers the pipeline.
 name: vlookup_rollnumber
 atom: vlookup
 min_files: 2
+inputs_map:
+  - param: left_file
+  - param: right_file
 ```
 
 Its parameters live in `pipelines/vlookup_rollnumber/config.json`.
@@ -103,10 +106,22 @@ inputs:
       param: right_file
 steps:
   - atom: vlookup                # step 0: join sales + catalog
+    inputs_map:
+      - param: left_file
+      - param: right_file
   - atom: computed_column        # step 1: compute revenue
+    inputs_map:
+      - param: input_file
+        source: prev_output
   - atom: group_aggregate        # step 2: aggregate by category
     input_from: 1                # reads step 1, not step 2 (branching)
+    inputs_map:
+      - param: input_file
+        source: prev_output
   - atom: rename_columns         # final step: rehydrate column names
+    inputs_map:
+      - param: input_file
+        source: prev_output
 trigger:
   rules:
     - type: inbox_files
@@ -126,7 +141,7 @@ trigger:
 | `sort_rows` | Sort by one or more columns |
 | `groupby` | Group by column with count |
 | `api_fetch` | HTTP fetch → CSV (JSON/XML/CSV response parsing) |
-| `mock_generate` | Generate synthetic data from CSV headers |
+| `mock_generate` | Generate synthetic data from CSV headers → single XLSX |
 
 ## Creating pipelines with AI
 

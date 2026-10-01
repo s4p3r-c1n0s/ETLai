@@ -197,7 +197,6 @@ def _execute_step(
     pipeline_name: str,
     step_index: int,
     file_paths: list[str],
-    is_first: bool,
     is_last: bool,
     prev_output: str | None = None,
     context=None,
@@ -247,7 +246,6 @@ def _execute_step(
     # Inject file paths or previous output (AFTER inject_as, so we know what's already set)
     _resolver = InputResolver()
     _resolver.resolve(
-        is_first=is_first,
         file_paths=file_paths,
         prev_output=prev_output,
         config=config,
@@ -300,6 +298,7 @@ def _build_single_job(manifest: dict, project_root: Path):
     # Extract input metadata for atoms
     inputs_def = manifest.get("inputs")
     input_metadata = inputs_def if inputs_def else None
+    inputs_map = manifest.get("inputs_map")
 
     # Calculate effective min_files: explicit > auto from transient inputs > default 1
     if "min_files" in manifest:
@@ -339,10 +338,10 @@ def _build_single_job(manifest: dict, project_root: Path):
             pipeline_name=pipeline_name,
             step_index=0,
             file_paths=file_paths,
-            is_first=True,
             is_last=True,
             context=context,
             input_metadata=input_metadata,
+            inputs_map=inputs_map,
         )
 
     @job(name=pipeline_name)
@@ -421,7 +420,6 @@ def _build_composite_job(manifest: dict, project_root: Path):
                         pipeline_name=pipeline_name,
                         step_index=step_index,
                         file_paths=file_paths,
-                        is_first=True,
                         is_last=last,
                         context=context,
                         input_metadata=input_metadata,
@@ -437,7 +435,6 @@ def _build_composite_job(manifest: dict, project_root: Path):
                         pipeline_name=pipeline_name,
                         step_index=step_index,
                         file_paths=file_paths,
-                        is_first=False,
                         is_last=last,
                         prev_output=prev_output,
                         context=context,

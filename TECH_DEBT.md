@@ -26,7 +26,7 @@ NEXT:  #10 Task-card router             ← one TaskPacket / one playbook per in
 
 **Fixed in:** `etlai/helpers/input_resolver.py`
 
-Extracted to `InputResolver` class with `resolve()` method. Supports explicit `inputs_map` for N-file atoms and retains fallback heuristic for backward compat.
+Extracted to `InputResolver` class with `resolve()` method. Explicit-only: every file-consuming step declares `inputs_map` (`source: inbox | prev_output | inbox_all`). The heuristic fallback was removed (see Unreleased changelog).
 
 ---
 

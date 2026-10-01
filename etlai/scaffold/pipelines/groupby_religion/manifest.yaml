@@ -1,3 +1,5 @@
 name: groupby_religion
 atom: groupby
 min_files: 1
+inputs_map:
+  - param: input_file
