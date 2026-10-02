@@ -409,3 +409,119 @@ TaskPacket:
 **Next:** item #10 (`TaskPacket` / one playbook per invoke).
 
 ---
+
+## 12. ARCHITECTURE.md vs code (audit 2026-10-02)
+
+Systematic verification of [ARCHITECTURE.md](ARCHITECTURE.md) against `etlai/`. Fix by updating the doc **or** changing code — prefer code when behavior is intentional and documented elsewhere (e.g. `workflow/LAYERS.md`).
+
+### Cross-references (ARCHITECTURE overstates or misstates runtime)
+
+| ARCHITECTURE.md claim | Code reality | Tracked in |
+|----------------------|--------------|------------|
+| Gate 5 scans new atoms for domain terms from `business_mapping.json` (§ Gate Validators, § Design Decisions) | During `etlai create`, firewall is active for `gate_4` / `gate_5`; mapping is renamed to `.business_mapping.json.firewalled`, so Gate 5 often skips leakage (`if mapping_path.exists()`) | **#9** §2 |
+| Firewall hides domain data from Atom Smith (§ Firewall, § Security) | Only `business_mapping.json` is renamed; `pipeline_graph.yaml` stays on disk; Atom Smith allowlist still lists phase 4+5 playbooks | **#9** §1 |
+| One task card / one playbook per invoke (§ Layer separation) | `build_ba_turn_prompt()` always lists **both** `phase_0` and `phase_1`; `build_agent_context()` puts **both** phase playbooks in `readable_files` for separator, atom_smith, and assembler roles; `worker_briefing()` prints the full role allowlist even when `current_task_id` is a single phase | **#10** (extend A1/B1 to filter `readable_files` by `task_id`) |
+| `orch.advance()` drives the create loop (§ Orchestrator Module example) | CLI uses `submit_worker()`, `advance_after_gate()`, `run_current_gate()`; `advance()` alone does not run gates or worker completion checks | Doc + **#10** B3 |
+
+### New drift (not fully covered above)
+
+#### 12a. Project directory vs external data root (`path:`)
+
+**ARCHITECTURE:** User-project diagram shows `manifest.yaml`, `config.json`, and lifecycle folders under `pipelines/<name>/`.
+
+**Code:** `PipelineFolders` keeps `manifest.yaml` / `config.json` under `pipelines/<name>/` in the project, but when `manifest.path` is set (via `path: ask` + `etlai sync`), **only** lifecycle folders (`inbox/`, `staging/`, …) live at the chosen external path (`etlai/helpers/folders.py`).
+
+**Resolve:**
+
+1. Add a “Project vs data root” subsection to ARCHITECTURE.md (and the user-project diagram).
+2. Document that `etlai sync` writes the absolute path back into `manifest.yaml`.
+3. Optional: add a test in `tests/test_helpers.py` asserting `config_path` stays on `_project_dir` when `path` is external.
+
+#### 12b. Runtime flow still says “auto-injection”
+
+**ARCHITECTURE:** § Runtime Data Flow step 4b: “inject input files (auto-injection)”.
+
+**Code:** Explicit-only binding via `inputs_map` + `InputResolver` (`etlai/helpers/input_resolver.py`); no heuristic assignment (TECH_DEBT #1 resolved).
+
+**Resolve:** Replace “auto-injection” with “explicit `inputs_map` binding (`inbox` / `prev_output` / `inbox_all`)” in ARCHITECTURE.md § Runtime Data Flow.
+
+#### 12c. Staging and stability apply only on the sensor path
+
+**ARCHITECTURE:** § Runtime Data Flow implies inbox → staging → job for all runs.
+
+**Code:** Hot-folder sensor moves files to `staging/` and passes staged paths via `RunConfig` (`etlai/sensors/hot_folder_sensor.py`). `_load_files` ops read **inbox** directly when `run_config` has no `file_paths` (`etlai/registry.py`), skipping stability checks and staging.
+
+**Resolve:**
+
+1. Document two entry paths in ARCHITECTURE.md: sensor-triggered (staging + stability) vs manual/Dagster UI (inbox direct).
+2. Optional hardening: teach `_load_files` to prefer staged files when present, or always require sensor for file pipelines.
+
+#### 12d. Atom `execute()` return contract is underspecified in ARCHITECTURE
+
+**ARCHITECTURE:** § Atom — output is only `{"success": bool, "message": str}`.
+
+**Code:** Shipped atoms add optional fields (`row_count`, `rows_removed`, `flagged_count`, etc.); registry only requires `success` and `message` on failure paths (`registry.py:_execute_step`).
+
+**Resolve:** Change ARCHITECTURE contract to “must include `success` and `message`; may include diagnostic fields” or trim atom returns to the minimal contract (breaking change for tests/logs — prefer doc update).
+
+#### 12e. Package diagram omits `input_resolver.py`
+
+**ARCHITECTURE:** § System Overview lists `folders`, `config_store`, `env_loader`, `notifier` under `helpers/` but file injection is documented under `registry.py` only.
+
+**Code:** Injection logic lives in `etlai/helpers/input_resolver.py` (called from `registry._execute_step`).
+
+**Resolve:** Add `input_resolver.py` to the ARCHITECTURE tree and a one-line pointer in § Execution Engine.
+
+#### 12f. ~~Undocumented `reference_files` config injection~~ RESOLVED
+
+**Resolved:** The unused `config["reference_files"]` injection was removed from `registry._execute_step`, and `inject_as` was folded into `inputs_map` (`source: reference`). See CHANGELOG.
+
+#### 12g. Security table: `secrets.env` vs manifest `env_file`
+
+**ARCHITECTURE:** § Security Boundaries row `secrets.env`.
+
+**Code:** Manifest field `env_file` (convention `~/.etlai/secrets.env` in examples); loaded in `_load_files` via `load_env_file` (`etlai/helpers/env_loader.py`).
+
+**Resolve:** Rename the ARCHITECTURE row to “env file (`manifest.env_file`, e.g. `~/.etlai/secrets.env`)” and note vars are loaded into `os.environ` before atoms run.
+
+#### 12h. Gate validator table is incomplete
+
+**ARCHITECTURE:** Gate 2 = logical graph only; Gate 3 = DAG only.
+
+**Code:** Gate 2 requires `business_mapping.json` and scans logical graph for real names (`gate_2_no_leakage.py`). Gate 3 also scans `atomic_operations.yaml` for domain leakage using the mapping (`gate_3_dag_valid.py`).
+
+**Resolve:** Expand the Gate Validators table in ARCHITECTURE.md to match validator docstrings.
+
+#### 12i. Gate 6 requires `inputs_map` on every composite step
+
+**ARCHITECTURE:** § Execution Engine describes when runtime fails without `inputs_map`, but does not tie this to assembly.
+
+**Code:** `gate_6_manifest_valid.py` fails any composite step missing `inputs_map`, including steps that only consume `prev_output` (must still declare `source: prev_output`).
+
+**Resolve:** Add a bullet under § Manifest (Composite) / § config: “Gate 6 requires `inputs_map` on **every** step.” Align with `pipelines/CLAUDE.md`.
+
+#### 12j. “5 agents” vs demoted Orchestrator prompt
+
+**ARCHITECTURE:** Orchestrator is **Code**, not an LLM agent; `agents/` holds five worker role prompts.
+
+**Code:** Scaffold still ships `agents/ORCHESTRATOR_SYSTEM_PROMPT.md` (demoted in #11 but present).
+
+**Resolve:** Remove or move to `docs/archive/` with a header “historical”; update ARCHITECTURE to say “four LLM worker prompts + Code control plane” or list the demoted file as non-runtime.
+
+#### 12k. Init scaffold vs user-project diagram
+
+**ARCHITECTURE:** User project lists core files; omits `dagster.yaml` copied by `etlai init` (`etlai/cli.py:cmd_init`).
+
+**Resolve:** Add `dagster.yaml` to the user-project box in ARCHITECTURE.md.
+
+#### 12l. Shipped-atoms param tables are partial
+
+**ARCHITECTURE:** § Shipped Atoms table omits common params (`target_path`, `left_output_columns`, XLSX-specific `mock_generate` behavior, etc.).
+
+**Code:** Atom docstrings and scaffold `CLAUDE.md` are the accurate param reference.
+
+**Resolve:** Either generate the ARCHITECTURE table from atom docstrings in CI, or replace the table with “see atom docstrings / scaffold CLAUDE.md” to avoid dual maintenance.
+
+**When:** Doc fixes (#12a–h, j–l) can land anytime. Behavioral fixes overlap **#9** (firewall + Gate 5) and **#10** (task-scoped readable paths + ARCHITECTURE orchestration example).
+
+---

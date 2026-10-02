@@ -98,17 +98,13 @@ inputs:
   - name: sales_data
     role: transient
     description: "Weekly sales CSV"
-  - name: product_catalog
-    role: reference
-    pattern: "catalog.csv"
-    inject_as:
-      step: 0
-      param: right_file
 steps:
   - atom: vlookup                # step 0: join sales + catalog
     inputs_map:
       - param: left_file
       - param: right_file
+        source: reference        # permanent lookup matched by pattern
+        pattern: "catalog.csv"
   - atom: computed_column        # step 1: compute revenue
     inputs_map:
       - param: input_file
@@ -163,15 +159,17 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for full details on the agent system.
 
 ## Key concepts
 
-### inject_as (reference file injection)
+### reference (permanent lookup files)
 
-Reference files in `reference/` are injected into specific atom params at runtime:
+Permanent lookup files in `reference/` bind to a step param via `source: reference`:
 ```yaml
-inputs:
-  - name: catalog
-    role: reference
-    pattern: "catalog.csv"
-    inject_as: {step: 0, param: right_file}
+steps:
+  - atom: vlookup
+    inputs_map:
+      - param: left_file
+      - param: right_file
+        source: reference
+        pattern: "catalog.csv"
 ```
 
 ### input_from (non-linear step routing)

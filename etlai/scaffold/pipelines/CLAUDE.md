@@ -22,22 +22,16 @@ atom: <atom_name>
 min_files: <count of transient inputs>
 
 inputs_map:                        # explicit file binding (see "inputs_map Rules")
-  - param: input_file              # or left_file / right_file per atom contract
-  - param: right_file              # optional: for join atoms (left_file + right_file)
+  - param: input_file              # or left_file per atom contract
+  - param: right_file              # optional: for join atoms
+    source: reference              # permanent lookup matched by pattern
+    pattern: "<filename_pattern>"  #   (omit source/pattern for a second inbox file)
 
 inputs:
   - name: <source_name>
     role: transient
     description: "<what this data is>"
     pattern: "<filename_pattern>"
-
-  - name: <reference_name>
-    role: reference
-    description: "<what this lookup table provides>"
-    pattern: "<filename_pattern>"
-    inject_as:
-      step: 0
-      param: <param_name_atom_expects>
 
 trigger:
   rules:
@@ -58,13 +52,6 @@ inputs:
   - name: <source_1>
     role: transient
     description: "..."
-  - name: <ref_1>
-    role: reference
-    description: "..."
-    pattern: "..."
-    inject_as:
-      step: 0
-      param: right_file
 
 steps:
   - name: enrich_data           # Optional: step produces <name>.csv as output
@@ -72,6 +59,8 @@ steps:
     inputs_map:
       - param: left_file        # step 0 consumes inbox files (or prev_output)
       - param: right_file
+        source: reference
+        pattern: "..."          # permanent lookup, e.g. catalog.csv
   - atom: <atom_for_op_2>
     inputs_map:
       - param: input_file
@@ -150,21 +139,6 @@ This is the core task of Phase 6. For each step:
 **business_mapping.json says:** `col_a.real_name = "price"`, `col_b.real_name = "quantity"`, `computed_1.business_name = "revenue"`
 **config.json becomes:** `{"expression": "price * quantity", "output_column": "revenue"}`
 
-## inject_as Rules
-
-Every reference file MUST have an `inject_as` declaration:
-
-```yaml
-inject_as:
-  step: <0-indexed step number>
-  param: <param name the atom expects for this file>
-```
-
-How to determine the correct step and param:
-1. Find which atomic operation uses this reference source (from atomic_operations.yaml)
-2. That operation maps to a step index (same order as steps list)
-3. The atom for that step expects the file as a specific param (typically `right_file` for joins, `input_file` for single-input atoms)
-
 ## inputs_map Rules
 
 **Every step that reads a file MUST declare `inputs_map`.** File binding is
@@ -173,29 +147,32 @@ runtime.
 
 Each entry is `{param, source}`:
 
-| source        | binds                                           |
-|---------------|-------------------------------------------------|
+| source            | binds                                            |
+|-------------------|--------------------------------------------------|
 | `inbox` (default) | the next unclaimed inbox file, in pipeline order |
-| `prev_output`     | the previous step's output path                 |
+| `prev_output`     | the previous step's output path                  |
 | `inbox_all`       | the full list of inbox files (e.g. `input_files`) |
+| `reference`       | first `reference/` file matching `pattern`        |
 
 Rules:
 1. Step 0 binds inbox files: joins declare `left_file` + `right_file`, others
    declare `input_file` (or `input_files` with `source: inbox_all`).
 2. Steps ≥ 1 bind `prev_output`: declare `input_file` with `source: prev_output`
-   (or `left_file` for a mid-pipeline join whose `right_file` comes from inject_as).
-3. Reference files are bound by `inject_as`, NOT by `inputs_map`. If `inject_as`
-   already set a param, list it in `inputs_map` anyway — the resolver skips it —
-   so the mapping stays complete and self-documenting.
+   (or `left_file` for a mid-pipeline join whose `right_file` is a reference).
+3. Permanent lookups bind via `source: reference` + a filename `pattern`
+   (matched against `reference/`). A reference param whose pattern matches
+   nothing is left unset — `etlai sync` warns about it.
 4. The param name must match what the atom reads (`input_file`, `left_file`,
    `right_file`, `input_files`). Check the atom's docstring.
 
 ```yaml
 steps:
-  - atom: vlookup               # step 0: joins two inbox files
+  - atom: vlookup               # step 0: join inbox + reference lookup
     inputs_map:
       - param: left_file
       - param: right_file
+        source: reference
+        pattern: "catalog.csv"
   - atom: group_aggregate       # step 1: reads step 0 output
     inputs_map:
       - param: input_file
@@ -301,8 +278,7 @@ All named intermediate steps produce `{name}.csv` in the output folder. The fina
 - Use `input_from: N` when a step needs input from a non-adjacent predecessor (branching DAGs)
 - Add `rename_columns` as the explicit last step
 - Translate ALL placeholders to real values in config.json (col_a → real_name)
-- Wire `inject_as` for every reference input
-- Declare `inputs_map` on every file-reading step (see "inputs_map Rules")
+- Declare `inputs_map` on every file-reading step (see "inputs_map Rules"), wiring references via `source: reference`
 - Include `load_files_op_name` for composite pipelines
 - Verify step count in manifest matches step count in config.json
 - Run `etlai sync` after assembly to validate and create folders
@@ -311,7 +287,7 @@ All named intermediate steps produce `{name}.csv` in the output folder. The fina
 
 - Leave generic placeholders (col_a, threshold_1) in config.json — they must be translated
 - Skip the rename_columns final step
-- Hardcode file paths in config — use inject_as for references, framework handles transient
+- Hardcode file paths in config — use `source: reference` for references, framework handles transient
 - Add steps that don't correspond to an entry in match_results.yaml
 - Change the step order vs what atomic_operations.yaml defines
 - Put business logic in the manifest — it belongs in config.json
@@ -324,4 +300,4 @@ After assembly, run:
 python workflow/validators/gate_6_manifest_valid.py pipelines/<name>/ .
 ```
 
-Must return PASS. Checks: all atoms exist, reference inputs have inject_as, last step is rename_columns, no untranslated placeholders in config.
+Must return PASS. Checks: all atoms exist, every step declares valid inputs_map (reference sources have a pattern), last step is rename_columns, no untranslated placeholders in config.

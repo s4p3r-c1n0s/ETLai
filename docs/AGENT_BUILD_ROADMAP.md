@@ -139,7 +139,7 @@ All system prompts written. Each agent knows exactly what it does, what it knows
 1. Read all four inputs (match_results, business_mapping, atomic_operations, pipeline_graph)
 2. Linearize DAG (convert branching to linear steps)
 3. Translate col_a → real_name for config.json
-4. Build manifest.yaml with steps, inputs, triggers, inject_as
+4. Build manifest.yaml with steps, inputs, inputs_map (references), triggers
 5. Set path: ask, write config.json, final rename_columns
 6. Run etlai sync
 
@@ -154,7 +154,7 @@ All system prompts written. Each agent knows exactly what it does, what it knows
 - Placeholder → real value translation
 - manifest.yaml builder
 - config.json builder
-- inject_as wirer
+- inputs_map / reference wirer
 - etlai sync runner
 
 **Tests needed:**

@@ -3,9 +3,8 @@
 Checks:
 - manifest.yaml has required fields (name, steps/atom, inputs, trigger)
 - config.json has entries for each step
-- Reference inputs have inject_as declarations
 - Last step is rename_columns (rehydration)
-- Every file-reading step declares inputs_map (explicit file binding)
+- Every file-reading step declares inputs_map (explicit file binding; reference sources require a pattern)
 - All referenced atoms exist on disk
 - No generic placeholders leaked into config (col_a, threshold_1 should be real values)
 
@@ -31,6 +30,22 @@ def _consumes_inbox_files(manifest: dict) -> bool:
         transient = [i for i in (manifest.get("inputs") or []) if i.get("role") == "transient"]
         min_files = len(transient) or 1
     return int(min_files) > 0
+
+
+def _validate_inputs_map(inputs_map: list, where: str, errors: list):
+    """Validate each inputs_map entry's source and reference pattern."""
+    for j, m in enumerate(inputs_map):
+        pj = f"{where}[{j}]"
+        if not m.get("param"):
+            errors.append(f"{pj}.param is empty")
+            continue
+        source = m.get("source", "inbox")
+        if source not in ("inbox", "prev_output", "reference", "inbox_all"):
+            errors.append(
+                f"{pj}.source must be inbox | prev_output | reference | inbox_all, got '{source}'"
+            )
+        if source == "reference" and not m.get("pattern"):
+            errors.append(f"{pj}.source 'reference' requires a 'pattern'")
 
 
 def validate(pipeline_dir: Path, project_root: Path) -> tuple[bool, list[str]]:
@@ -76,8 +91,10 @@ def validate(pipeline_dir: Path, project_root: Path) -> tuple[bool, list[str]]:
                 errors.append(
                     f"steps[{i}] '{step_atom}' is missing 'inputs_map' — "
                     "every step must declare explicit file binding "
-                    "(source: inbox | prev_output | inbox_all)"
+                    "(source: inbox | prev_output | reference | inbox_all)"
                 )
+            else:
+                _validate_inputs_map(step["inputs_map"], f"steps[{i}].inputs_map", errors)
 
             # Verify atom exists
             user_path = project_root / "atoms" / f"{step_atom}.py"
@@ -111,8 +128,10 @@ def validate(pipeline_dir: Path, project_root: Path) -> tuple[bool, list[str]]:
         if _consumes_inbox_files(manifest) and not manifest.get("inputs_map"):
             errors.append(
                 "manifest.inputs_map is missing — file-consuming pipelines must "
-                "declare explicit file binding (source: inbox | prev_output | inbox_all)"
+                "declare explicit file binding (source: inbox | prev_output | reference | inbox_all)"
             )
+        elif manifest.get("inputs_map"):
+            _validate_inputs_map(manifest["inputs_map"], "inputs_map", errors)
 
         user_path = project_root / "atoms" / f"{atom}.py"
         shipped = False
@@ -131,17 +150,18 @@ def validate(pipeline_dir: Path, project_root: Path) -> tuple[bool, list[str]]:
                 "(single-atom pipelines use step_0 for params)"
             )
 
-    # Inputs validation
+    # Inputs validation (transient declarations only — references live in inputs_map)
     inputs = manifest.get("inputs") or []
     for i, inp in enumerate(inputs):
         p = f"inputs[{i}]"
         if not inp.get("name"):
             errors.append(f"{p}.name is empty")
         role = inp.get("role", "")
-        if role not in ("transient", "reference"):
-            errors.append(f"{p}.role must be 'transient' or 'reference', got '{role}'")
-        if role == "reference" and not inp.get("inject_as"):
-            errors.append(f"{p}: reference input must have inject_as declaration")
+        if role != "transient":
+            errors.append(
+                f"{p}.role must be 'transient' — reference files now bind via "
+                "steps' inputs_map (source: reference)"
+            )
 
     # Trigger check
     trigger = manifest.get("trigger") or {}

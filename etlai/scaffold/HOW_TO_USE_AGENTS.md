@@ -37,7 +37,7 @@ User: "Build me a pipeline that takes weekly sales data, enriches it with produc
 
 4. **Assembler** (Agent 4) wires the pipeline:
    - Translates col_a → "price", col_b → "quantity", threshold_1 → 15.0
-   - Creates `manifest.yaml` with steps, inputs, triggers, inject_as
+   - Creates `manifest.yaml` with steps, inputs, inputs_map, triggers
    - Creates `config.json` with real values: {"price": "price", "quantity": "qty", "threshold": 15.0}
    - Adds final `rename_columns` step
    - Runs `etlai sync` to validate
@@ -66,7 +66,7 @@ When a Claude Code session opens this repository and you ask it to build a pipel
 **From `scaffold/CLAUDE.md`:**
 - 7-phase workflow overview
 - Shipped atoms table (10 atoms)
-- Key concepts (inject_as, config.json, triggers)
+- Key concepts (inputs_map, config.json, triggers)
 - DO/DO NOT rules
 
 **From `workflow/CLAUDE.md`:**

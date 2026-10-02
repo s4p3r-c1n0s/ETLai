@@ -108,17 +108,13 @@ inputs:
   - name: sales_data
     role: transient
     description: "Weekly sales CSV"
-  - name: product_catalog
-    role: reference
-    pattern: "catalog.csv"
-    inject_as:
-      step: 0
-      param: right_file
 steps:
   - atom: vlookup                # step 0: join sales + catalog
     inputs_map:
       - param: left_file
       - param: right_file
+        source: reference
+        pattern: "catalog.csv"
   - atom: computed_column        # step 1: compute revenue
     inputs_map:
       - param: input_file
@@ -182,26 +178,24 @@ trigger:
 
 ### File Injection Logic
 
-File inputs are declared **explicitly** per step via `inputs_map`. The framework
-injects file paths into atom config before execution in two passes:
+File inputs are declared **explicitly** per step via `inputs_map`. Each entry
+binds a param to a source:
 
-1. **Reference injection (`inject_as`)** runs first — it sets params from
-   `reference/` (e.g. `right_file`). A param that is already populated is left
-   untouched by the resolver.
-2. **`inputs_map`** binds the remaining params by `source`:
-
-| source           | binds                                             |
-|------------------|---------------------------------------------------|
-| `inbox` (default) | the next unclaimed inbox file, in pipeline order |
+| source            | binds                                             |
+|-------------------|---------------------------------------------------|
+| `inbox` (default) | the next unclaimed inbox file, in pipeline order  |
 | `prev_output`     | the previous step's output path                   |
 | `inbox_all`       | the full list of inbox files (e.g. `input_files`) |
+| `reference`       | first `reference/` file matching `pattern`        |
 
 ```yaml
 steps:
   - atom: vlookup
     inputs_map:
       - param: left_file
-      - param: right_file          # skipped if already set via inject_as
+      - param: right_file
+        source: reference
+        pattern: "catalog.csv"
   - atom: groupby
     inputs_map:
       - param: input_file
@@ -209,7 +203,8 @@ steps:
 ```
 
 A step with inbound files that omits `inputs_map` fails loudly rather than
-guessing.
+guessing. A `source: reference` whose `pattern` matches nothing leaves the param
+unset (the atom fails at runtime); `etlai sync` warns about it.
 
 ### Target Path (Output Naming)
 
@@ -234,21 +229,24 @@ steps:
     input_from: 0
 ```
 
-### inject_as (Reference File Injection)
+### Reference Files (Permanent Lookups)
 
-Reference files in `reference/` are injected into specific step params:
+Permanent lookup datasets live in `reference/` and are never consumed. Bind them
+to a step param with `source: reference` plus a filename `pattern`:
 
 ```yaml
-inputs:
-  - name: catalog
-    role: reference
-    pattern: "catalog.csv"
-    inject_as:
-      step: 0
-      param: right_file
+steps:
+  - atom: vlookup
+    inputs_map:
+      - param: left_file                    # inbox
+      - param: right_file
+        source: reference
+        pattern: "catalog.csv"
 ```
 
-At runtime: fnmatch against `reference/` basenames → set config param.
+At runtime the resolver fnmatches `reference/` basenames against `pattern` and
+sets the first match. A param already set by an explicit `config.json` value is
+left untouched.
 
 ---
 
@@ -325,8 +323,7 @@ orch.get_phase_status()              # which artifacts exist
    a. load_files: reads staged paths from RunConfig
    b. For each step:
       - read step config from config.json
-      - inject reference files (inject_as)
-      - bind files via inputs_map (inbox / prev_output / inbox_all)
+      - bind files via inputs_map (inbox / prev_output / reference / inbox_all)
       - atom.execute(params_json)
    c. Last step: files → processed/, output written
 5. Failure at any step: all files → rejected/ + .error.txt

@@ -44,7 +44,7 @@ pytest tests/test_atoms.py::TestVlookup::test_basic_join
 tests/
 ├── conftest.py              # Shared fixtures
 ├── test_atoms.py            # ✅ Atom contract tests (created)
-├── test_registry.py         # ✅ Manifest loading, job building, inject_as, input_from
+├── test_registry.py         # ✅ Manifest loading, job building, reference binding, input_from
 ├── test_helpers.py          # ✅ Folder, config, env helpers (created)
 ├── test_input_resolver.py   # ✅ InputResolver: explicit inputs_map (inbox / prev_output / inbox_all)
 ├── test_orchestrator.py     # ✅ Gate runner, firewall, context building, phase status
@@ -202,7 +202,7 @@ chmod +x .githooks/*
 | Component | Tests | Goal | Status |
 |-----------|-------|------|--------|
 | Atoms | ✅ | 90%+ | ✅ Done (vlookup, groupby, mock_generate, api_fetch, computed_column, group_aggregate, filter_rows, flag_rows, rename_columns, sort_rows) |
-| Registry | ✅ | 85%+ | ✅ Done (manifest loading, resolution, triggers, execute_step, inject_as, input_from, mid-pipeline joins) |
+| Registry | ✅ | 85%+ | ✅ Done (manifest loading, resolution, triggers, execute_step, reference binding, input_from, mid-pipeline joins) |
 | Helpers | ✅ | 90%+ | ✅ Done (config_store, env_loader, folders) |
 | Inputs | ✅ | 90%+ | ✅ Done (validation, README gen, min_files calc) |
 | InputResolver | ✅ | 95%+ | ✅ Done (explicit `inputs_map`, `prev_output` / `inbox_all` sources, pattern ordering) |

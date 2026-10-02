@@ -200,7 +200,6 @@ def _execute_step(
     is_last: bool,
     prev_output: str | None = None,
     context=None,
-    input_metadata: list[dict] | None = None,
     step_name: str | None = None,
     inputs_map: list[dict] | None = None,
 ):
@@ -221,35 +220,14 @@ def _execute_step(
         notify(title=f"{pipeline_name} — Failed", message=str(e)[:200])
         raise
 
-    # Inject reference files
-    ref_files = folders.list_reference_files()
-    if ref_files:
-        config["reference_files"] = ref_files
-
-    # Resolve inject_as declarations FIRST: inject reference file paths into config params
-    if input_metadata:
-        for inp in input_metadata:
-            inject_as = inp.get("inject_as")
-            if not inject_as or inp.get("role") != "reference":
-                continue
-            target_step = inject_as.get("step")
-            param_name = inject_as.get("param")
-            if target_step != step_index or not param_name:
-                continue
-            pattern = inp.get("pattern")
-            if pattern and ref_files:
-                import fnmatch
-                matched = [f for f in ref_files if fnmatch.fnmatch(Path(f).name, pattern)]
-                if matched:
-                    config[param_name] = matched[0]
-
-    # Inject file paths or previous output (AFTER inject_as, so we know what's already set)
+    # Bind files (inbox / prev_output / reference) via inputs_map
     _resolver = InputResolver()
     _resolver.resolve(
         file_paths=file_paths,
         prev_output=prev_output,
         config=config,
         inputs_map=inputs_map,
+        reference_files=folders.list_reference_files(),
     )
 
     # Determine target path: use step_name if provided (Option B: named steps),
@@ -295,9 +273,8 @@ def _build_single_job(manifest: dict, project_root: Path):
     atom_module = _resolve_atom(atom_name, project_root)
     folders = PipelineFolders(pipeline_name)
 
-    # Extract input metadata for atoms
+    # Transient input declarations (for file ordering + sensor patterns)
     inputs_def = manifest.get("inputs")
-    input_metadata = inputs_def if inputs_def else None
     inputs_map = manifest.get("inputs_map")
 
     # Calculate effective min_files: explicit > auto from transient inputs > default 1
@@ -340,7 +317,6 @@ def _build_single_job(manifest: dict, project_root: Path):
             file_paths=file_paths,
             is_last=True,
             context=context,
-            input_metadata=input_metadata,
             inputs_map=inputs_map,
         )
 
@@ -359,9 +335,8 @@ def _build_composite_job(manifest: dict, project_root: Path):
     env_file = manifest.get("env_file")
     folders = PipelineFolders(pipeline_name)
 
-    # Extract input metadata for atoms
+    # Transient input declarations (for file ordering + sensor patterns)
     inputs_def = manifest.get("inputs")
-    input_metadata = inputs_def if inputs_def else None
 
     # Calculate effective min_files
     if "min_files" in manifest:
@@ -422,7 +397,6 @@ def _build_composite_job(manifest: dict, project_root: Path):
                         file_paths=file_paths,
                         is_last=last,
                         context=context,
-                        input_metadata=input_metadata,
                         step_name=sname,
                         inputs_map=imap,
                     )
@@ -438,7 +412,6 @@ def _build_composite_job(manifest: dict, project_root: Path):
                         is_last=last,
                         prev_output=prev_output,
                         context=context,
-                        input_metadata=input_metadata,
                         step_name=sname,
                         inputs_map=imap,
                     )

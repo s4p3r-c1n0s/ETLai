@@ -12,7 +12,7 @@ Three sentences. Non-negotiable.
 
 2. **Business logic lives ONLY in config.json.** Column names, thresholds, formulas, file patterns — all domain specifics are in config, never in atom code.
 
-3. **The framework wires them together.** manifest.yaml declares the pipeline structure. `inject_as` maps reference files to atom params. The registry executes steps in order, passing config as params.
+3. **The framework wires them together.** manifest.yaml declares the pipeline structure. `inputs_map` binds files (inbox, prev_output, reference) to atom params. The registry executes steps in order, passing config as params.
 
 ---
 
@@ -142,17 +142,17 @@ registry loads it at runtime and injects file paths. A missing config raises.
 
 ## Key Concepts
 
-### inject_as
+### reference (permanent lookup)
 
-Declares that a reference file should be injected as a specific atom param at runtime:
+A permanent lookup file in `reference/` binds to a step param via `source: reference` + `pattern`:
 ```yaml
-inputs:
-  - name: lookup_table
-    role: reference
-    pattern: "lookup.csv"
-    inject_as:
-      step: 0
-      param: right_file
+steps:
+  - atom: vlookup
+    inputs_map:
+      - param: left_file
+      - param: right_file
+        source: reference
+        pattern: "lookup.csv"
 ```
 
 ### input_from
@@ -181,7 +181,7 @@ Single source of business config. Written during Phase 6 by translating `busines
 
 ### Reference folder
 
-`pipelines/<name>/reference/` — permanent data (lookup tables, price lists). Never moved or consumed. Wired to atoms via `inject_as`.
+`pipelines/<name>/reference/` — permanent data (lookup tables, price lists). Never moved or consumed. Wired to atoms via `source: reference` in `inputs_map`.
 
 ### Triggers
 

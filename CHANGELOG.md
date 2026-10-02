@@ -4,7 +4,11 @@ All notable changes to ETLai are documented here.
 
 ## [Unreleased]
 
-<!-- empty, ready for next cycle -->
+### Changed
+- **Breaking:** reference file binding folded into `inputs_map` (`source: reference` + `pattern`); the separate `inject_as` mechanism (and its `step` indirection) is removed
+- Removed the unused `config["reference_files"]` injection from `registry.py`
+- `inputs_map` sources are now `inbox | prev_output | reference | inbox_all`; gate 6 validates sources and requires a `pattern` for `reference`
+- `etlai sync` warns when a `source: reference` pattern matches nothing; `PIPELINE_README.md` lists reference bindings from `inputs_map`
 
 ## [0.6.0] — 2026-10-02
 

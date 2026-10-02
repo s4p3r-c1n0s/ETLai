@@ -76,7 +76,7 @@ etlai run                           # start Dagster dev server
   sensors dynamically. No static imports.
 - `orchestrator.py` coordinates the 5-agent pipeline creation: gate validation,
   firewall enforcement, agent context building.
-- Each manifest wires: atoms + config + triggers + explicit `inputs_map` (file binding), plus optional inputs (inject_as, input_from)
+- Each manifest wires: atoms + config + triggers + explicit `inputs_map` (file binding: inbox / prev_output / reference), plus optional `input_from`
 - Atoms: `execute(params_json: str) -> str` returning `{"success": bool, "message": str}`
 - Resolution: user `atoms/` → package `etlai.atoms`
 - config.json: every step reads its `step_N` key (including `step_0`)

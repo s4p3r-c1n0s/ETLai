@@ -159,9 +159,9 @@ orch.prepare_gate1() → run gate 1
 - `pipelines/<name>/config.json` — per-step configuration with real values
 
 **System Prompt Components:**
-1. `workflow/phase_6_assemble.md` — How to linearize DAG, translate placeholders, wire inject_as, set triggers
+1. `workflow/phase_6_assemble.md` — How to linearize DAG, translate placeholders, wire `inputs_map` (references), set triggers
 2. `workflow/phase_7_rehydrate.md` — How to add rename_columns final step with output mapping
-3. `pipelines/CLAUDE.md` — Assembly law (manifest structure, config translation, inject_as rules, multiple outputs)
+3. `pipelines/CLAUDE.md` — Assembly law (manifest structure, config translation, inputs_map rules, multiple outputs)
 4. `workflow/templates/manifest.yaml`, `config.json` — Schemas
 5. Instruction: **Translate generic → real.** Every col_a, threshold_1, formula_x becomes a real value from business_mapping. Final step is always rename_columns.
 
@@ -174,7 +174,7 @@ orch.prepare_gate1() → run gate 1
 - No generic placeholders in final config.json
 - Final step MUST be rename_columns with output_columns mapping
 - `path: ask` MUST be set in manifest
-- All reference files must have inject_as declarations
+- All reference files must have `source: reference` bindings in `inputs_map`
 - min_files calculation must be correct
 
 **Exit Criteria:**
@@ -233,7 +233,7 @@ orch.prepare_gate1() → run gate 1
 ✅ Phase 6-7 playbooks
 ✅ pipelines/CLAUDE.md
 ✅ manifest/config schemas
-✅ Trigger definitions, input roles, inject_as rules
+✅ Trigger definitions, input roles, inputs_map/reference rules
 
 ❌ Atom code (read-only, already created)
 ❌ How to write new atoms

@@ -212,8 +212,8 @@ class TestExecuteStep:
         atom_mod.execute.assert_not_called()
         assert (pipeline_dir / "rejected" / "data.csv").exists()
 
-    def test_execute_step_injects_reference_via_inject_as(self, tmp_path, monkeypatch):
-        """inject_as in input_metadata resolves reference file path into config param."""
+    def test_execute_step_injects_reference_via_source(self, tmp_path, monkeypatch):
+        """source: reference in inputs_map binds a reference/ file to its param."""
         from unittest.mock import MagicMock
         from etlai.registry import _execute_step
         from etlai.helpers.folders import PipelineFolders
@@ -248,17 +248,6 @@ class TestExecuteStep:
 
         folders = PipelineFolders("test_pipe")
 
-        input_metadata = [
-            {"name": "sales", "role": "transient", "description": "Sales data"},
-            {
-                "name": "catalog",
-                "role": "reference",
-                "description": "Product catalog",
-                "pattern": "catalog.csv",
-                "inject_as": {"step": 0, "param": "right_file"},
-            },
-        ]
-
         _execute_step(
             atom_module=atom_mod,
             folders=folders,
@@ -267,78 +256,18 @@ class TestExecuteStep:
             file_paths=[str(input_csv)],
             is_last=True,
             context=None,
-            input_metadata=input_metadata,
-            inputs_map=[{"param": "left_file"}, {"param": "right_file"}],
+            inputs_map=[
+                {"param": "left_file"},
+                {"param": "right_file", "source": "reference", "pattern": "catalog.csv"},
+            ],
         )
 
-        # The reference file should be injected as "right_file"
-        assert "right_file" in received_config
-        assert received_config["right_file"].endswith("catalog.csv")
-
-    def test_execute_step_single_transient_with_inject_as_sets_left_file(self, tmp_path, monkeypatch):
-        """When inject_as sets right_file and there's 1 transient file, auto-inject sets left_file."""
-        from unittest.mock import MagicMock
-        from etlai.registry import _execute_step
-        from etlai.helpers.folders import PipelineFolders
-
-        monkeypatch.chdir(tmp_path)
-
-        pipeline_dir = tmp_path / "pipelines" / "test_pipe"
-        for d in ["inbox", "staging", "processed", "rejected", "output", "reference"]:
-            (pipeline_dir / d).mkdir(parents=True)
-
-        ref_file = pipeline_dir / "reference" / "catalog.csv"
-        ref_file.write_text("sku,name\nA,Widget\n")
-
-        input_csv = pipeline_dir / "inbox" / "sales.csv"
-        input_csv.write_text("sku,qty\nA,5\n")
-
-        (pipeline_dir / "config.json").write_text(
-            json.dumps({"step_0": {"left_column": "sku", "right_column": "sku"}})
-        )
-
-        received_config = {}
-
-        def mock_execute(params_json):
-            received_config.update(json.loads(params_json))
-            return '{"success": true, "message": "done"}'
-
-        atom_mod = MagicMock()
-        atom_mod.execute.side_effect = mock_execute
-
-        folders = PipelineFolders("test_pipe")
-
-        input_metadata = [
-            {"name": "sales", "role": "transient", "description": "Sales data"},
-            {
-                "name": "catalog",
-                "role": "reference",
-                "description": "Product catalog",
-                "pattern": "catalog.csv",
-                "inject_as": {"step": 0, "param": "right_file"},
-            },
-        ]
-
-        _execute_step(
-            atom_module=atom_mod,
-            folders=folders,
-            pipeline_name="test_pipe",
-            step_index=0,
-            file_paths=[str(input_csv)],
-            is_last=True,
-            context=None,
-            input_metadata=input_metadata,
-            inputs_map=[{"param": "left_file"}, {"param": "right_file"}],
-        )
-
-        # right_file from inject_as, left_file from auto-injection (1 transient + right_file present)
-        assert "right_file" in received_config
-        assert "left_file" in received_config
+        # left bound from inbox, right bound from reference/
         assert received_config["left_file"].endswith("sales.csv")
         assert received_config["right_file"].endswith("catalog.csv")
 
-    def test_execute_step_inject_as_skips_wrong_step(self, tmp_path, monkeypatch):
-        """inject_as targeting step 1 should not inject into step 0."""
+    def test_execute_step_reference_no_match_leaves_param_unset(self, tmp_path, monkeypatch):
+        """A source: reference pattern that matches nothing leaves its param unset."""
         from unittest.mock import MagicMock
         from etlai.registry import _execute_step
         from etlai.helpers.folders import PipelineFolders
@@ -349,8 +278,8 @@ class TestExecuteStep:
         for d in ["inbox", "staging", "processed", "rejected", "output", "reference"]:
             (pipeline_dir / d).mkdir(parents=True)
 
-        ref_file = pipeline_dir / "reference" / "supplier.csv"
-        ref_file.write_text("sku,cost\nA,10\n")
+        ref_file = pipeline_dir / "reference" / "other.csv"
+        ref_file.write_text("sku,name\nA,Widget\n")
 
         input_csv = pipeline_dir / "inbox" / "data.csv"
         input_csv.write_text("sku,qty\nA,5\n")
@@ -368,16 +297,6 @@ class TestExecuteStep:
 
         folders = PipelineFolders("test_pipe")
 
-        input_metadata = [
-            {
-                "name": "supplier",
-                "role": "reference",
-                "description": "Supplier prices",
-                "pattern": "supplier.csv",
-                "inject_as": {"step": 1, "param": "right_file"},
-            },
-        ]
-
         _execute_step(
             atom_module=atom_mod,
             folders=folders,
@@ -386,11 +305,14 @@ class TestExecuteStep:
             file_paths=[str(input_csv)],
             is_last=True,
             context=None,
-            input_metadata=input_metadata,
-            inputs_map=[{"param": "input_file"}],
+            inputs_map=[
+                {"param": "input_file"},
+                {"param": "right_file", "source": "reference", "pattern": "catalog.csv"},
+            ],
         )
 
-        # right_file should NOT be injected (targets step 1, we're in step 0)
+        # catalog.csv does not exist in reference/, so right_file stays unset
+        assert received_config["input_file"].endswith("data.csv")
         assert "right_file" not in received_config
 
 
@@ -571,8 +493,8 @@ class TestStep0ConfigRegression:
 class TestMidPipelineJoinRegression:
     """Regression: mid-pipeline join (step ≥ 1) should set left_file when right_file is injected."""
 
-    def test_step_1_with_inject_as_right_file_sets_left_file(self, tmp_path, monkeypatch):
-        """When inject_as sets right_file for step ≥ 1, prev_output goes to left_file."""
+    def test_step_1_with_reference_sets_left_file(self, tmp_path, monkeypatch):
+        """Mid-pipeline join: prev_output → left_file, reference → right_file."""
         from unittest.mock import MagicMock
         from etlai.registry import _execute_step
         from etlai.helpers.folders import PipelineFolders
@@ -607,16 +529,6 @@ class TestMidPipelineJoinRegression:
 
         folders = PipelineFolders("test_pipe")
 
-        input_metadata = [
-            {
-                "name": "prices",
-                "role": "reference",
-                "description": "Price list",
-                "pattern": "prices.csv",
-                "inject_as": {"step": 1, "param": "right_file"},
-            },
-        ]
-
         _execute_step(
             atom_module=atom_mod,
             folders=folders,
@@ -626,14 +538,13 @@ class TestMidPipelineJoinRegression:
             is_last=True,
             prev_output=str(prev_output_file),
             context=None,
-            input_metadata=input_metadata,
             inputs_map=[
                 {"param": "left_file", "source": "prev_output"},
-                {"param": "right_file"},
+                {"param": "right_file", "source": "reference", "pattern": "prices.csv"},
             ],
         )
 
-        # right_file set by inject_as, left_file should be prev_output
+        # right_file set from reference/, left_file from prev_output
         assert "right_file" in received_config
         assert received_config["right_file"].endswith("prices.csv")
         assert "left_file" in received_config
@@ -641,8 +552,8 @@ class TestMidPipelineJoinRegression:
         # input_file should NOT be set when right_file is present
         assert "input_file" not in received_config
 
-    def test_step_1_without_inject_as_sets_input_file(self, tmp_path, monkeypatch):
-        """Normal step ≥ 1 (no inject_as) sets input_file = prev_output as before."""
+    def test_step_1_without_reference_sets_input_file(self, tmp_path, monkeypatch):
+        """Normal step ≥ 1 (no reference) sets input_file = prev_output as before."""
         from unittest.mock import MagicMock
         from etlai.registry import _execute_step
         from etlai.helpers.folders import PipelineFolders
@@ -685,7 +596,7 @@ class TestMidPipelineJoinRegression:
             inputs_map=[{"param": "input_file", "source": "prev_output"}],
         )
 
-        # No inject_as → input_file = prev_output (normal behavior)
+        # No reference → input_file = prev_output (normal behavior)
         assert "input_file" in received_config
         assert received_config["input_file"] == str(prev_output_file)
         assert "left_file" not in received_config

@@ -21,5 +21,5 @@ Control plane supplies: role policy + phase 6/7 playbooks + paths (firewall alre
 ## Success
 
 - Valid `manifest.yaml` + fully translated `config.json`
-- `path: ask`, every step declares `inputs_map`, inject_as / input_from as required by phase cards
+- `path: ask`, every step declares `inputs_map` (references via `source: reference`), `input_from` as required by phase cards
 - Ready for gate 6

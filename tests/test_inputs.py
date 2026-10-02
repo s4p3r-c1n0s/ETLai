@@ -3,20 +3,15 @@
 import fnmatch
 from pathlib import Path
 
-from etlai.cli import _validate_inputs, _generate_pipeline_readme
+from etlai.cli import _validate_inputs, _validate_references, _generate_pipeline_readme
 
 
 class TestValidateInputs:
     """Tests for _validate_inputs()."""
 
     def test_valid_inputs_no_errors(self, tmp_path):
-        ref_dir = tmp_path / "reference"
-        ref_dir.mkdir()
-        (ref_dir / "catalog.csv").write_text("sku,name\nA,B")
-
         inputs_def = [
             {"name": "sales", "role": "transient", "description": "Weekly sales"},
-            {"name": "catalog", "role": "reference", "description": "Product catalog", "pattern": "catalog.csv"},
         ]
         errors = []
         _validate_inputs(inputs_def, "test_pipe", tmp_path, errors)
@@ -48,17 +43,22 @@ class TestValidateInputs:
         ref_dir.mkdir()
         (ref_dir / "other.csv").write_text("x\n1")
 
-        inputs_def = [{"name": "catalog", "role": "reference", "description": "Catalog", "pattern": "catalog_*.csv"}]
-        errors = []
-        _validate_inputs(inputs_def, "test_pipe", tmp_path, errors)
-        assert errors == []
+        manifest = {
+            "steps": [{"atom": "vlookup", "inputs_map": [
+                {"param": "left_file"},
+                {"param": "right_file", "source": "reference", "pattern": "catalog_*.csv"},
+            ]}],
+        }
+        _validate_references(manifest, "test_pipe", tmp_path)
         assert "no files matching" in capsys.readouterr().out
 
     def test_reference_warns_when_folder_missing(self, tmp_path, capsys):
-        inputs_def = [{"name": "catalog", "role": "reference", "description": "Catalog"}]
-        errors = []
-        _validate_inputs(inputs_def, "test_pipe", tmp_path, errors)
-        assert errors == []
+        manifest = {
+            "steps": [{"atom": "vlookup", "inputs_map": [
+                {"param": "right_file", "source": "reference", "pattern": "catalog.csv"},
+            ]}],
+        }
+        _validate_references(manifest, "test_pipe", tmp_path)
         assert "does not exist" in capsys.readouterr().out
 
     def test_transient_pattern_reports_matches(self, tmp_path, capsys):
@@ -77,10 +77,18 @@ class TestGeneratePipelineReadme:
     """Tests for _generate_pipeline_readme()."""
 
     def test_generates_readme_file(self, tmp_path):
-        manifest = {"name": "weekly_report", "steps": [{"atom": "vlookup"}, {"atom": "groupby"}]}
+        manifest = {
+            "name": "weekly_report",
+            "steps": [
+                {"atom": "vlookup", "inputs_map": [
+                    {"param": "left_file"},
+                    {"param": "right_file", "source": "reference", "pattern": "catalog.csv", "description": "Product catalog"},
+                ]},
+                {"atom": "groupby", "inputs_map": [{"param": "input_file", "source": "prev_output"}]},
+            ],
+        }
         inputs_def = [
             {"name": "sales", "role": "transient", "description": "Weekly sales CSV", "pattern": "sales_*.csv"},
-            {"name": "catalog", "role": "reference", "description": "Product catalog"},
         ]
         _generate_pipeline_readme(manifest, inputs_def, tmp_path)
 
@@ -92,14 +100,19 @@ class TestGeneratePipelineReadme:
         assert "vlookup -> groupby" in content
         assert "| sales |" in content
         assert "`inbox/`" in content
-        assert "| catalog |" in content
+        assert "| right_file |" in content
         assert "`reference/`" in content
 
     def test_readme_contains_workflow_steps(self, tmp_path):
-        manifest = {"name": "pipe", "atom": "vlookup"}
+        manifest = {
+            "name": "pipe",
+            "steps": [{"atom": "vlookup", "inputs_map": [
+                {"param": "left_file"},
+                {"param": "right_file", "source": "reference", "pattern": "lookup.csv"},
+            ]}],
+        }
         inputs_def = [
             {"name": "data", "role": "transient", "description": "Input data"},
-            {"name": "lookup", "role": "reference", "description": "Lookup table"},
         ]
         _generate_pipeline_readme(manifest, inputs_def, tmp_path)
         content = (tmp_path / "PIPELINE_README.md").read_text()

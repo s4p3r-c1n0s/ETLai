@@ -13,7 +13,7 @@ Wire together matched/created atoms into a working ETLai pipeline: manifest.yaml
 
 ## Output
 
-- `pipelines/<name>/manifest.yaml` — pipeline manifest with steps, inputs, inject_as, triggers
+- `pipelines/<name>/manifest.yaml` — pipeline manifest with steps, inputs, inputs_map, triggers
 - `pipelines/<name>/config.json` — per-step config with real column names and values from business_mapping
 - A `rename_columns` step as the final step (rehydration from Phase 7)
 
@@ -43,11 +43,10 @@ Use this to design pipelines with multiple outputs: place strategic steps (renam
    c. Declare `inputs_map` on every step (see `pipelines/CLAUDE.md` → "inputs_map Rules"):
       - Step 0 binds inbox files (`left_file`/`right_file`, `input_file`, or `input_files` + `source: inbox_all`).
       - Every later step binds `prev_output` (`input_file` with `source: prev_output`, or `left_file` for a mid-pipeline join).
-      - Reference params set by `inject_as` are listed but skipped by the resolver.
+      - Permanent lookups bind via `source: reference` + a `pattern` (matched against `reference/`).
    d. For any step that needs non-adjacent input, add `input_from: <step_index>`.
    e. Build `inputs:` declarations from pipeline_graph.yaml data_sources:
-      - role: reference for permanent data, role: transient for incoming data
-      - Add `inject_as:` for each reference source (map to the step + param that needs it)
+      - role: transient for incoming data (references now live in `inputs_map`)
    f. Build `trigger:` from pipeline_graph.yaml triggers.
    g. Add a final step: `atom: rename_columns` (rehydration).
 7. Build config.json:
@@ -65,7 +64,7 @@ Use this to design pipelines with multiple outputs: place strategic steps (renam
 - `manifest.yaml` passes `etlai sync` without errors
 - `config.json` has entries for every step
 - Every atom in the steps list actually exists (shipped or in atoms/)
-- Every reference file has an `inject_as` declaration pointing to the correct step + param
+- Every reference lookup is wired via `source: reference` in the correct step's `inputs_map`
 - The final step is `rename_columns` with output mapping from business_mapping
 - Trigger rules match what was defined in pipeline_graph.yaml
 
@@ -102,8 +101,7 @@ The atom receives real column names via config — it doesn't know what "sku" me
 ## DO
 
 - Pre-write config.json for every step (no UI — params come solely from config)
-- Wire `inject_as` for every reference data source (never leave reference file discovery to the atom)
-- Declare `inputs_map` on every step — explicit file binding, no heuristic fallback
+- Declare `inputs_map` on every step — explicit file binding (references via `source: reference`, no heuristic fallback)
 - Add `rename_columns` as the explicit final step
 - Set `min_files` based on count of transient inputs
 - Include `load_files_op_name` for composite pipelines
@@ -113,7 +111,7 @@ The atom receives real column names via config — it doesn't know what "sku" me
 
 - Put generic placeholder names (col_a, threshold_1) in config.json — translate them to real values
 - Skip the rename_columns final step (output must have business-meaningful column names)
-- Hardcode file paths in config — use inject_as for reference files, framework handles transient
+- Hardcode file paths in config — use `source: reference` for reference files, framework handles transient
 - Create steps that don't map to an entry in match_results.yaml
 - Modify any atom code during this phase — assembly uses atoms as-is
 
@@ -124,4 +122,4 @@ After assembling manifest.yaml and config.json, run:
 python workflow/validators/gate_6_manifest_valid.py pipelines/<name>/ .
 ```
 
-Must return PASS. Checks: required fields present, all atoms exist, reference inputs have inject_as, last step is rename_columns, every step declares `inputs_map`, no un-translated placeholders in config.json.
+Must return PASS. Checks: required fields present, all atoms exist, every step declares a valid `inputs_map` (reference sources have a pattern), last step is rename_columns, no un-translated placeholders in config.json.

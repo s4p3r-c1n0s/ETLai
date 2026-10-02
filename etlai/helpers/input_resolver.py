@@ -5,7 +5,9 @@ ordered list of ``{param, source}`` entries:
 
     inputs_map:
       - param: left_file                 # next inbox file (source: inbox)
-      - param: right_file                # second inbox file
+      - param: right_file
+        source: reference                # permanent lookup, matched by pattern
+        pattern: "catalog.csv"
       - param: input_file
         source: prev_output              # previous step's output path
       - param: input_files
@@ -14,11 +16,12 @@ ordered list of ``{param, source}`` entries:
 Sources:
   * ``inbox`` (default) — the next unclaimed inbox file, in pipeline order
   * ``prev_output``     — the previous step's output path
+  * ``reference``       — the first ``reference/`` file matching ``pattern``
+                          (``pattern`` is required)
   * ``inbox_all``       — the full list of inbox files
 
-Reference files are NOT resolved here: the registry injects them via the
-``inject_as`` declaration before this resolver runs. A param that is already
-populated (by ``inject_as`` or an explicit value in config.json) is left alone.
+A param that is already populated by an explicit value in config.json is left
+alone.
 
 There is no heuristic fallback: a step with inbound files MUST declare
 ``inputs_map``, otherwise resolution fails loudly.
@@ -70,7 +73,7 @@ def order_files_by_pattern(file_paths: list[str], inputs: list[dict]) -> list[st
 
 
 class InputResolver:
-    """Maps inbound files and previous outputs to atom config params.
+    """Maps inbound files, previous outputs, and reference files to atom params.
 
     Explicit only: every step's manifest declares ``inputs_map`` naming the
     param(s) it binds and the source of each path.
@@ -83,6 +86,7 @@ class InputResolver:
         prev_output: str | None,
         config: dict,
         inputs_map: list[dict] | None,
+        reference_files: list[str] | None = None,
     ) -> dict:
         """Inject file paths into config and return it.
 
@@ -92,6 +96,7 @@ class InputResolver:
             config: current step config (mutated in place)
             inputs_map: explicit mapping from the manifest step declaration,
                         e.g. [{"param": "left_file"}, {"param": "right_file"}]
+            reference_files: paths under reference/ (for source: reference)
 
         Returns:
             The mutated config dict with file paths injected.
@@ -112,8 +117,8 @@ class InputResolver:
         for mapping in inputs_map:
             param = mapping["param"]
 
-            # Already populated (reference injection via inject_as, or an
-            # explicit path in config.json) — leave it untouched.
+            # Already populated by an explicit value in config.json — leave it
+            # untouched.
             if param in config:
                 continue
 
@@ -128,10 +133,20 @@ class InputResolver:
                 if cursor < len(file_paths):
                     config[param] = file_paths[cursor]
                     cursor += 1
+            elif source == "reference":
+                pattern = mapping.get("pattern")
+                if not pattern:
+                    raise ValueError(
+                        f"source 'reference' for param {param!r} requires a 'pattern'."
+                    )
+                ref_files = reference_files or []
+                matched = [f for f in ref_files if fnmatch.fnmatch(os.path.basename(f), pattern)]
+                if matched:
+                    config[param] = matched[0]
             else:
                 raise ValueError(
                     f"Unknown source {source!r} in inputs_map for param {param!r}. "
-                    "Expected one of: inbox, prev_output, inbox_all."
+                    "Expected one of: inbox, prev_output, reference, inbox_all."
                 )
 
         return config

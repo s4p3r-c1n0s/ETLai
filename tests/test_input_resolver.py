@@ -75,7 +75,7 @@ class TestExplicitMode:
         assert config["rates_file"] == "/rates.csv"
 
     def test_skips_already_set_params(self, resolver):
-        """A param already populated (e.g. by inject_as) is left untouched."""
+        """A param already populated by an explicit config.json value is left untouched."""
         config = {"source_b": "/already.csv"}
         inputs_map = [{"param": "source_a"}, {"param": "source_b"}]
         resolver.resolve(
@@ -151,6 +151,40 @@ class TestExplicitMode:
             inputs_map=None,
         )
         assert result == {"endpoint": "https://example.test"}
+
+    def test_reference_source_matches_pattern(self, resolver):
+        config = {}
+        inputs_map = [{"param": "right_file", "source": "reference", "pattern": "catalog.csv"}]
+        resolver.resolve(
+            file_paths=[],
+            prev_output=None,
+            config=config,
+            inputs_map=inputs_map,
+            reference_files=["/ref/catalog.csv", "/ref/prices.csv"],
+        )
+        assert config["right_file"] == "/ref/catalog.csv"
+
+    def test_reference_source_no_match(self, resolver):
+        config = {}
+        inputs_map = [{"param": "right_file", "source": "reference", "pattern": "catalog.csv"}]
+        resolver.resolve(
+            file_paths=[],
+            prev_output=None,
+            config=config,
+            inputs_map=inputs_map,
+            reference_files=["/ref/prices.csv"],
+        )
+        assert "right_file" not in config
+
+    def test_reference_source_requires_pattern(self, resolver):
+        with pytest.raises(ValueError, match="requires a 'pattern'"):
+            resolver.resolve(
+                file_paths=[],
+                prev_output=None,
+                config={},
+                inputs_map=[{"param": "right_file", "source": "reference"}],
+                reference_files=["/ref/catalog.csv"],
+            )
 
     def test_unknown_source_raises(self, resolver):
         with pytest.raises(ValueError, match="Unknown source"):
