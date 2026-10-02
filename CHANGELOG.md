@@ -4,6 +4,10 @@ All notable changes to ETLai are documented here.
 
 ## [Unreleased]
 
+<!-- empty, ready for next cycle -->
+
+## [0.6.1] — 2026-10-02
+
 ### Changed
 - **Breaking:** reference file binding folded into `inputs_map` (`source: reference` + `pattern`); the separate `inject_as` mechanism (and its `step` indirection) is removed
 - Removed the unused `config["reference_files"]` injection from `registry.py`
