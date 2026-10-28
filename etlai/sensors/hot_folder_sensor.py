@@ -5,7 +5,7 @@ import os
 import re
 import time
 
-from dagster import RunRequest, SensorEvaluationContext, SkipReason, sensor
+from dagster import DefaultSensorStatus, RunRequest, SensorEvaluationContext, SkipReason, sensor
 
 from etlai.helpers.folders import PipelineFolders
 
@@ -66,7 +66,7 @@ def build_hot_folder_sensor(pipeline_name: str, job_name: str, min_files: int = 
     if load_files_op_name is None:
         load_files_op_name = f"{job_name}__load_files"
 
-    @sensor(name=sensor_name, job_name=job_name, minimum_interval_seconds=30)
+    @sensor(name=sensor_name, job_name=job_name, minimum_interval_seconds=30, default_status=DefaultSensorStatus.RUNNING)
     def _sensor(context: SensorEvaluationContext):
         _sweep_rejected(folders, context)
         file_paths = folders.list_inbox_files(FILE_PATTERN)

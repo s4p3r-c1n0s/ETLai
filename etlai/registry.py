@@ -97,6 +97,42 @@ def _build_triggers(manifest: dict, pipeline_name: str, job):
     return sensors, schedules
 
 
+def detect_sensor_names(manifest: dict) -> list[str]:
+    """Return the hot-folder sensor name(s) a manifest would produce.
+
+    Pure, dagster-free mirror of ``_build_triggers`` / ``_build_inbox_files_sensor``,
+    used by ``etlai sync`` to know which sensors to enable. Keep in sync with
+    ``_build_inbox_files_sensor`` (the source of truth for sensor construction).
+    """
+    name = manifest.get("name")
+    if not name:
+        return []
+
+    inputs_def = manifest.get("inputs")
+    default_min_files = manifest.get("min_files")
+    if default_min_files is None and inputs_def:
+        default_min_files = sum(1 for inp in inputs_def if inp.get("role") == "transient")
+    if default_min_files is None:
+        default_min_files = 1
+
+    trigger_config = manifest.get("trigger", {})
+    rules = trigger_config.get("rules", [])
+
+    if not rules:
+        has_sensor = default_min_files > 0
+    else:
+        has_sensor = False
+        for rule in rules:
+            if rule.get("type") != "inbox_files":
+                continue
+            min_files = rule.get("min_files", default_min_files)
+            if min_files > 0:
+                has_sensor = True
+                break
+
+    return [f"{name}_sensor"] if has_sensor else []
+
+
 def _build_inbox_files_sensor(manifest: dict, pipeline_name: str, rule: dict | None = None):
     """Build a hot-folder sensor for file-based triggers.
 

@@ -89,6 +89,8 @@ def cmd_init(args):
 
 
 def cmd_sync(args):
+    from etlai.registry import detect_sensor_names
+
     project_root = Path(os.getcwd())
     config_path = project_root / "etlai.yaml"
     if not config_path.is_file():
@@ -107,11 +109,13 @@ def cmd_sync(args):
         return
 
     errors = []
+    sensor_names = []
     for manifest_path in sorted(pipelines_root.glob("*/manifest.yaml")):
         with open(manifest_path) as f:
             manifest = yaml.safe_load(f)
 
         name = manifest.get("name", manifest_path.parent.name)
+        sensor_names.extend(detect_sensor_names(manifest))
 
         # Handle path: ask — prompt user for folder location
         if manifest.get("path") == "ask":
@@ -176,8 +180,44 @@ def cmd_sync(args):
         for e in errors:
             print(f"  - {e}")
         sys.exit(1)
-    else:
-        print("\nAll pipelines valid.")
+
+    _enable_sensors(sensor_names)
+    print("\nAll pipelines valid.")
+
+
+def _enable_sensors(sensor_names: list[str]):
+    """Turn on detected hot-folder sensors in the Dagster instance.
+
+    Clears any persisted STOPPED state so the sensor reverts to its code-level
+    default (``default_status=RUNNING``). Sensors with no stored state are already
+    handled by ``default_status`` and need no action here.
+    """
+    if not sensor_names:
+        return
+
+    os.environ.setdefault("DAGSTER_HOME", os.getcwd())
+    try:
+        from dagster import DagsterInstance
+        instance = DagsterInstance.get()
+    except Exception:
+        return
+
+    names = set(sensor_names)
+    enabled = []
+    try:
+        for state in instance.all_instigator_state():
+            if state.instigator_type.value != "SENSOR":
+                continue
+            if state.instigator_name not in names:
+                continue
+            if state.status.value == "STOPPED":
+                instance.delete_instigator_state(state.instigator_origin_id, state.selector_id)
+                enabled.append(state.instigator_name)
+    except Exception:
+        pass
+
+    for name in enabled:
+        print(f"  ENABLED sensor: {name}")
 
 
 def _ask_folder_path(pipeline_name: str) -> str | None:

@@ -6,6 +6,16 @@ All notable changes to ETLai are documented here.
 
 <!-- empty, ready for next cycle -->
 
+## [0.6.2] — 2026-10-28
+
+### Changed
+- Hot-folder sensors now default to RUNNING (`default_status=DefaultSensorStatus.RUNNING`)
+- `etlai sync` re-enables detected sensors that were manually stopped (clears persisted STOPPED state)
+
+### Added
+- `detect_sensor_names()` helper in `registry.py` (dagster-free sensor detection)
+- Tests: sensor default status, `detect_sensor_names`, and `cmd_sync` force-enable
+
 ## [0.6.1] — 2026-10-02
 
 ### Changed

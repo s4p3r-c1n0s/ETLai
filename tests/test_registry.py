@@ -437,6 +437,65 @@ class TestTriggerBuilding:
         assert schedule.name == "test_pipeline_schedule"
         assert schedule.cron_schedule == "0 8 * * *"
 
+    def test_sensor_default_status_is_running(self, tmp_path, monkeypatch):
+        """Hot-folder sensors are RUNNING by default."""
+        from etlai.registry import _build_inbox_files_sensor
+        from dagster import DefaultSensorStatus
+
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "pipelines" / "test_pipeline").mkdir(parents=True)
+
+        sensor = _build_inbox_files_sensor({"name": "test_pipeline", "min_files": 2}, "test_pipeline")
+
+        assert sensor is not None
+        assert sensor.default_status == DefaultSensorStatus.RUNNING
+
+
+class TestDetectSensorNames:
+    """Tests for detect_sensor_names (dagster-free sensor detection)."""
+
+    def test_default_trigger_with_min_files(self):
+        from etlai.registry import detect_sensor_names
+
+        assert detect_sensor_names({"name": "p", "min_files": 2}) == ["p_sensor"]
+
+    def test_zero_min_files_means_no_sensor(self):
+        from etlai.registry import detect_sensor_names
+
+        assert detect_sensor_names({"name": "p", "min_files": 0}) == []
+
+    def test_transient_inputs_set_min_files(self):
+        from etlai.registry import detect_sensor_names
+
+        manifest = {
+            "name": "p",
+            "inputs": [{"name": "a", "role": "transient", "pattern": "*.csv"}],
+        }
+        assert detect_sensor_names(manifest) == ["p_sensor"]
+
+    def test_inbox_files_rule_with_min_files(self):
+        from etlai.registry import detect_sensor_names
+
+        manifest = {
+            "name": "p",
+            "trigger": {"rules": [{"type": "inbox_files", "min_files": 3}]},
+        }
+        assert detect_sensor_names(manifest) == ["p_sensor"]
+
+    def test_schedule_only_rule_means_no_sensor(self):
+        from etlai.registry import detect_sensor_names
+
+        manifest = {
+            "name": "p",
+            "trigger": {"rules": [{"type": "schedule", "cron": "0 * * * *"}]},
+        }
+        assert detect_sensor_names(manifest) == []
+
+    def test_missing_name_means_no_sensor(self):
+        from etlai.registry import detect_sensor_names
+
+        assert detect_sensor_names({"min_files": 2}) == []
+
 
 class TestStep0ConfigRegression:
     """Regression: every step — including step 0 — reads its step_N key."""

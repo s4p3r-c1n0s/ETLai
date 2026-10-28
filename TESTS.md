@@ -49,7 +49,7 @@ tests/
 ├── test_input_resolver.py   # ✅ InputResolver: explicit inputs_map (inbox / prev_output / inbox_all)
 ├── test_orchestrator.py     # ✅ Gate runner, firewall, context building, phase status
 ├── test_sensors.py          # TODO (partially covered in registry tests)
-├── test_cli.py              # TODO (future phase)
+├── test_cli.py              # ✅ sync sensor-enable behavior (default_status + force-enable)
 ├── test_integration.py      # TODO (future phase)
 └── fixtures/                # TODO (created dynamically via conftest fixtures)
 ```
@@ -207,9 +207,9 @@ chmod +x .githooks/*
 | Inputs | ✅ | 90%+ | ✅ Done (validation, README gen, min_files calc) |
 | InputResolver | ✅ | 95%+ | ✅ Done (explicit `inputs_map`, `prev_output` / `inbox_all` sources, pattern ordering) |
 | Orchestrator | ✅ | 85%+ | ✅ Done (gate runner, firewall, agent context, phase status, pipeline naming) |
-| Sensors | ⬜ | 80%+ | TODO (covered partially in registry tests) |
-| CLI | ⬜ | 60%+ | TODO |
-| **Overall** | **123 tests** | **80%+** | **✅ Comprehensive coverage** |
+| Sensors | ✅ | 80%+ | ✅ Done (default RUNNING, detect_sensor_names, sync force-enable) |
+| CLI | ✅ | 60%+ | ✅ Done (sync sensor-enable: default_status, force-enable) |
+| **Overall** | **158 tests** | **80%+** | **✅ Comprehensive coverage** |
 
 Check actual coverage: `pip install -e ".[dev]"` then `pytest --cov=etlai --cov-report=html`
 
