@@ -209,7 +209,7 @@ chmod +x .githooks/*
 | Orchestrator | ✅ | 85%+ | ✅ Done (gate runner, firewall, agent context, phase status, pipeline naming) |
 | Sensors | ✅ | 80%+ | ✅ Done (default RUNNING, detect_sensor_names, sync force-enable) |
 | CLI | ✅ | 60%+ | ✅ Done (sync sensor-enable: default_status, force-enable) |
-| **Overall** | **158 tests** | **80%+** | **✅ Comprehensive coverage** |
+| **Overall** | **160 tests** | **80%+** | **✅ Comprehensive coverage** |
 
 Check actual coverage: `pip install -e ".[dev]"` then `pytest --cov=etlai --cov-report=html`
 

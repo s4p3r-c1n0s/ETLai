@@ -6,6 +6,7 @@ import os
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import yaml
@@ -199,22 +200,41 @@ def _enable_sensors(sensor_names: list[str]):
     try:
         from dagster import DagsterInstance
         instance = DagsterInstance.get()
-    except Exception:
+    except Exception as exc:
+        print(f"  WARN: could not load Dagster instance: {exc}")
         return
 
     names = set(sensor_names)
-    enabled = []
     try:
-        for state in instance.all_instigator_state():
-            if state.instigator_type.value != "SENSOR":
-                continue
-            if state.instigator_name not in names:
-                continue
-            if state.status.value == "STOPPED":
+        states = list(instance.all_instigator_state())
+    except Exception as exc:
+        print(f"  WARN: could not read sensor states from Dagster instance: {exc}")
+        return
+
+    enabled = []
+    for state in states:
+        if state.instigator_type.value != "SENSOR":
+            continue
+        if state.instigator_name not in names:
+            continue
+        if state.status.value != "STOPPED":
+            continue
+
+        # Retry on transient SQLite lock contention — common on Windows, where the
+        # running dagster daemon/webserver holds the instance database open.
+        last_exc = None
+        for attempt in range(3):
+            try:
                 instance.delete_instigator_state(state.instigator_origin_id, state.selector_id)
                 enabled.append(state.instigator_name)
-    except Exception:
-        pass
+                last_exc = None
+                break
+            except Exception as exc:
+                last_exc = exc
+                time.sleep(0.5 * (attempt + 1))
+
+        if last_exc is not None:
+            print(f"  WARN: failed to re-enable sensor {state.instigator_name}: {last_exc}")
 
     for name in enabled:
         print(f"  ENABLED sensor: {name}")

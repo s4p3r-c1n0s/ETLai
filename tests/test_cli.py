@@ -27,6 +27,43 @@ def _make_project(tmp_path):
     return tmp_path
 
 
+def _build_real_sensor_state(name, status):
+    """Build a real Dagster InstigatorState for a sensor (valid remote origin)."""
+    import os
+    import sys
+
+    from dagster._core.remote_origin import (
+        InProcessCodeLocationOrigin,
+        LoadableTargetOrigin,
+        RemoteInstigatorOrigin,
+        RemoteRepositoryOrigin,
+    )
+    from dagster._core.scheduler.instigation import (
+        InstigatorState,
+        InstigatorType,
+    )
+
+    loadable = LoadableTargetOrigin(
+        executable_path=sys.executable,
+        python_file=None,
+        module_name="definitions",
+        working_directory=os.getcwd(),
+        attribute=None,
+        package_name=None,
+        autoload_defs_module_name=None,
+    )
+    code_location = InProcessCodeLocationOrigin(
+        loadable_target_origin=loadable,
+        location_name="test_location",
+        container_image=None,
+        entry_point=None,
+        container_context=None,
+    )
+    repository_origin = RemoteRepositoryOrigin(code_location, "test_repo")
+    origin = RemoteInstigatorOrigin(repository_origin, name)
+    return InstigatorState(origin, InstigatorType.SENSOR, status)
+
+
 class TestSyncEnablesSensors:
     """cmd_sync should turn detected STOPPED sensors back on (revert to RUNNING default)."""
 
@@ -117,3 +154,59 @@ class TestSyncEnablesSensors:
         cli.cmd_sync(None)
 
         assert deleted == []
+
+
+class TestSyncEnablesSensorsRealInstance:
+    """Integration: cmd_sync removes STOPPED sensor state from a real Dagster instance.
+
+    Uses a real persistent (sqlite) DagsterInstance so the delete actually persists
+    and reverts the sensor to its code-level default_status=RUNNING.
+    """
+
+    def test_stopped_sensor_state_is_removed_from_real_instance(self, tmp_path, monkeypatch):
+        from dagster import DagsterInstance
+        from dagster._core.scheduler.instigation import InstigatorStatus
+        from etlai import cli
+
+        _make_project(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        dagster_home = tmp_path / "dagster_home"
+        dagster_home.mkdir()
+        inst = DagsterInstance.local_temp(tempdir=str(dagster_home))
+        inst.add_instigator_state(
+            _build_real_sensor_state("test_pipeline_sensor", InstigatorStatus.STOPPED)
+        )
+        monkeypatch.setattr(DagsterInstance, "get", lambda *a, **k: inst)
+
+        # Sanity: the STOPPED state is persisted before sync runs.
+        assert len(inst.all_instigator_state()) == 1
+
+        cli.cmd_sync(None)
+
+        # STOPPED state was deleted → sensor reverts to default_status=RUNNING.
+        assert inst.all_instigator_state() == []
+
+    def test_running_sensor_state_is_preserved_in_real_instance(self, tmp_path, monkeypatch):
+        from dagster import DagsterInstance
+        from dagster._core.scheduler.instigation import InstigatorStatus
+        from etlai import cli
+
+        _make_project(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        dagster_home = tmp_path / "dagster_home"
+        dagster_home.mkdir()
+        inst = DagsterInstance.local_temp(tempdir=str(dagster_home))
+        inst.add_instigator_state(
+            _build_real_sensor_state("test_pipeline_sensor", InstigatorStatus.RUNNING)
+        )
+        monkeypatch.setattr(DagsterInstance, "get", lambda *a, **k: inst)
+
+        cli.cmd_sync(None)
+
+        # RUNNING state is left untouched.
+        remaining = inst.all_instigator_state()
+        assert len(remaining) == 1
+        assert remaining[0].instigator_name == "test_pipeline_sensor"
+        assert remaining[0].status == InstigatorStatus.RUNNING
