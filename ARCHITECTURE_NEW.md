@@ -367,7 +367,15 @@ request ─► Business Analyst ─► Separator ─► Atom Smith ─► Assemb
 ```
 
 Each phase is owned by one worker; six deterministic gates validate the
-artifact(s) a phase produces before the next phase may begin.
+artifact(s) a phase produces before the next phase may begin. The exact task
+sequence (the control-plane graph — LLMs never choose the next id) is:
+
+```
+phase_0 → phase_1 → confirm → gate_1 → phase_2 → phase_3 → gate_2 → gate_3 → phase_4 → phase_5 → gate_4 → gate_5 → phase_6 → phase_7 → gate_6 → done
+```
+
+where `confirm` is the explicit user-confirmation step and `done` is the terminal
+state.
 
 ### 5.2 Agents: four workers + Code control plane
 
@@ -401,10 +409,10 @@ Deterministic scripts that validate artifacts between phases:
 | Gate | Validates | Key checks |
 |---|---|---|
 | 1 | `pipeline_graph.yaml` | complete, confirmed, all fields present |
-| 2 | `logical_graph.yaml` | zero domain terms (vs `business_mapping.json`), valid verbs |
+| 2 | `logical_graph.yaml` | zero domain terms (substring scan vs `business_mapping.json`), non-empty nodes |
 | 3 | `atomic_operations.yaml` | valid DAG, single verbs, no cycles, no domain leakage |
 | 4 | `match_results.yaml` | all ops matched, atoms exist |
-| 5 | new atom code | no domain leakage, has `execute()`, no hardcoded paths |
+| 5 | new atom code | no domain leakage, has `execute()`, never reads `business_mapping.json` |
 | 6 | `manifest.yaml` + `config.json` | valid structure, no placeholders, last step `rename_columns`, `inputs_map` everywhere needed |
 
 Gates are deterministic *precisely because* LLMs can rationalize anything — a
@@ -504,16 +512,83 @@ the chosen absolute path back into the manifest.
 
 ## Appendix A: CLI Commands
 
-<!-- TODO -->
+| Command | Purpose |
+|---|---|
+| `etlai init <dir>` | Scaffold a project (copies workflow, agents, templates) |
+| `etlai create "request"` | Create a pipeline via the build system (§5) |
+| `etlai sync` | Validate manifests, create lifecycle folders, resolve `path: ask`, enable detected sensors |
+| `etlai run` | Start the Dagster dev server |
+| `etlai list` | List registered pipelines |
 
 ## Appendix B: Module Resolution
 
-<!-- TODO -->
+```
+Atoms:  project/atoms/<name>.py  →  etlai.atoms.<name>
+```
+
+User files take precedence over shipped atoms, so a user can override a shipped
+atom without modifying the package.
 
 ## Appendix C: Shipped Atoms
 
-<!-- TODO -->
+The ten shipped atoms are: `vlookup`, `computed_column`, `group_aggregate`,
+`filter_rows`, `flag_rows`, `rename_columns`, `sort_rows`, `groupby`,
+`api_fetch`, `mock_generate`.
+
+**Param reference:** per-atom docstrings (`etlai/atoms/*.py`) and
+`etlai/scaffold/atoms/CLAUDE.md` are authoritative. This document does not
+maintain a duplicate param table.
 
 ## Appendix D: Directory Layout & `path:` Mechanics
 
-<!-- TODO -->
+Package:
+
+```
+etlai/
+├── cli.py              CLI (init/create/sync/run/list)
+├── orchestrator.py     Code control plane (gates, firewall, tasks)
+├── registry.py         Manifest scanner → Dagster Definitions
+├── atoms/              10 shipped generic atoms
+├── helpers/            folders, input_resolver, config_store, env_loader, notifier
+├── sensors/            hot-folder sensor factory
+└── scaffold/           templates copied by `etlai init`
+    ├── agents/         worker system prompts (4 workers + demoted orchestrator shim)
+    ├── atoms/          CLAUDE.md (atom param reference)
+    ├── workflow/       phase playbooks, templates, gate validators
+    ├── definitions.py  Dagster loader
+    ├── etlai.yaml      project config
+    └── dagster.yaml    instance config
+```
+
+User project:
+
+```
+<project>/
+├── definitions.py       3-line Dagster loader
+├── etlai.yaml           project config (pipelines_root)
+├── dagster.yaml         instance config
+├── atoms/               user/AI-created atoms (override shipped)
+├── workflow/            gate validators + phase playbooks (copied)
+├── agents/              worker system prompts (copied)
+└── pipelines/
+    <name>/
+      manifest.yaml      wiring
+      config.json        business params
+      workflow/          intermediate artifacts (pipeline_graph, …)
+      inbox/ staging/ processed/ rejected/ output/ reference/
+```
+
+`path:` mechanics:
+
+- `manifest.yaml` and `config.json` always live under `pipelines/<name>/` in the
+  project tree, next to the `workflow/` artifacts.
+- The lifecycle folders (`inbox/` … `reference/`) live at the pipeline's **data
+  root**, which defaults to the project directory.
+- When `manifest.path` is set, only the lifecycle folders move to that external
+  path. `path: ask` opens a native folder picker during `etlai sync`, which writes
+  the chosen absolute path back into `manifest.yaml`.
+- `config.json` stays in the project directory regardless of where the data root
+  points (`PipelineFolders.config_path`).
+
+*(Legacy, unused: `etlai/runners/` and the top-level `logic/`, `runners/`,
+`sensors/` directories.)*
