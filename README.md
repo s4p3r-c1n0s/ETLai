@@ -1,8 +1,9 @@
 # ETLai
 
-A local, AI-assisted data transformation engine built on Dagster. Install it,
-scaffold a project, and let Claude Code create new pipelines — from CSV
-transformations to API ingestion.
+A local, AI-assisted data transformation engine built on Dagster. Describe a
+pipeline in plain English and ETLai builds it with AI — then runs it
+deterministically, with no AI at runtime — from CSV transformations to API
+ingestion.
 
 ## Install
 
@@ -18,7 +19,7 @@ Requires Python 3.10+ and Tkinter (ships with most Python installations).
 etlai init ~/my-etl
 cd ~/my-etl
 
-# Option A: Create a pipeline with the 5-agent system
+# Option A: Create a pipeline with the build system
 etlai create "join sales data with product catalog and compute revenue"
 
 # Option B: Manual pipeline creation (see ARCHITECTURE.md)
@@ -26,15 +27,16 @@ etlai sync
 etlai run
 ```
 
-This starts a Dagster dev server at `http://localhost:3000`. Enable sensors in
-the UI, then drop CSV files into `pipelines/<name>/inbox/`.
+This starts a Dagster dev server at `http://localhost:3000`. Sensors run by
+default — drop CSV files into `pipelines/<name>/inbox/` to trigger a pipeline
+(run `etlai sync` to re-enable any sensor you've stopped).
 
 ## Commands
 
 | Command | Purpose |
 |---------|---------|
 | `etlai init <dir>` | Scaffold project (templates, workflow, agents, example pipelines) |
-| `etlai create "request"` | Create pipeline via 5-agent system with gate validation |
+| `etlai create "request"` | Create pipeline via the build system (4 LLM workers + Code control plane) |
 | `etlai sync` | Validate manifests, create folders, prompt `path: ask`, check env files |
 | `etlai run` | Start Dagster dev server |
 | `etlai list` | Show registered pipelines with atoms and min_files |
@@ -141,21 +143,23 @@ trigger:
 
 ## Creating pipelines with AI
 
-The 5-agent system (`etlai create`) orchestrates pipeline creation through 7
-phases with deterministic gate validators between each:
+`etlai create` drives a build system of four LLM workers under a deterministic
+**Code control plane**, with gate validators between each phase:
 
-| Agent | Role |
+| Worker | Role |
 |-------|------|
-| Orchestrator | Coordinates agents; owns user channel for BA mediation |
-| Business Analyst | Worker: drafts requirements graph; proposes questions (no user session) |
-| Separator | Strips domain terms, produces generic operation graph |
+| Business Analyst | Drafts the requirements graph; proposes questions (user Q&A mediated by the control plane) |
+| Separator | Strips domain terms, produces a generic operation graph |
 | Atom Smith | Matches/creates atoms (firewalled from business data) |
 | Assembler | Wires manifest + config with real business values |
+
+The **control plane is Code** (`orchestrator.py`), not an LLM agent — it routes
+tasks, owns the user channel, and enforces gates and the firewall.
 
 The **firewall** physically hides `business_mapping.json` from Atom Smith,
 ensuring atoms remain domain-agnostic by construction.
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for full details on the agent system.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for full details on the build system.
 
 ## Key concepts
 
